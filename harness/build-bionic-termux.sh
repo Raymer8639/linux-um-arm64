@@ -9,8 +9,12 @@ JOBS=${JOBS:-4}
 HOSTCC=${HOSTCC:-/usr/bin/gcc}
 HOSTCXX=${HOSTCXX:-/usr/bin/g++}
 
+if [[ ! -x "$NDK/bin/clang" && -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]]; then
+  NDK="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+fi
 if [[ ! -x "$NDK/bin/clang" ]]; then echo "missing NDK clang: $NDK/bin/clang" >&2; exit 1; fi
 mkdir -p "$OUT"
+OUT=$(CDPATH= cd -- "$OUT" && pwd)
 cd "$SRC"
 
 common=(

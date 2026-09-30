@@ -1,0 +1,12 @@
+#!/bin/sh
+# Minimal PID 1: run the command script, report its status, then halt.
+mountpoint -q /proc || mount -t proc proc /proc || exit 1
+mountpoint -q /sys || mount -t sysfs sysfs /sys || exit 1
+mountpoint -q /dev || mount -t devtmpfs devtmpfs /dev || exit 1
+/bin/sh /um-command.sh
+rc=$?
+printf "UM_COMMAND_EXIT=%s\n" "$rc"
+if [ "$rc" -eq 0 ]; then echo UMARM_BOOT_OK; fi
+sync
+poweroff -f
+while :; do sleep 3600; done

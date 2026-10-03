@@ -1,0 +1,46 @@
+name: UML CI
+
+on:
+  push:
+    branches: [um-arm64]
+  pull_request:
+    branches: [um-arm64]
+
+permissions:
+  contents: read
+
+jobs:
+  x86_64-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install UML build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison clang flex libelf-dev libssl-dev lld llvm
+      - name: Build x86_64 UML reference
+        run: |
+          make ARCH=um SUBARCH=x86 LLVM=1 O=out/x86_64 \
+            STUB_EXE_LDFLAGS='-fuse-ld=lld -Wl,-n -Wl,--no-rosegment -static' \
+            defconfig
+          make ARCH=um SUBARCH=x86 LLVM=1 O=out/x86_64 \
+            STUB_EXE_LDFLAGS='-fuse-ld=lld -Wl,-n -Wl,--no-rosegment -static' \
+            -j2
+
+  harness-checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check harness scripts
+        run: |
+          bash -n harness/*.sh tools/um-arm64/harness/*.sh
+          python3 -m py_compile harness/*.py
+      - name: Check required project documents
+        run: |
+          test -s README.md
+          test -s docs/UPSTREAM.md
+          test -s docs/BUILD.md
+          test -s docs/TESTING.md
+          test -s docs/SECURITY.md
+          test -s docs/CONTRIBUTING.md
+          test -s docs/RELEASE.md

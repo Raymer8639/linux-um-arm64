@@ -17,7 +17,7 @@ jobs:
       - name: Install UML build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison flex libelf-dev libssl-dev
+          sudo apt-get install -y bc bison clang flex libelf-dev libssl-dev lld llvm
       - name: Build x86_64 UML reference
         run: |
           make ARCH=um SUBARCH=x86 LLVM=1 O=out/x86_64 defconfig

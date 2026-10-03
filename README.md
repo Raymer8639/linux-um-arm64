@@ -3,6 +3,19 @@
 `ARCH=um SUBARCH=arm64` — a Linux kernel running as an ordinary aarch64 userspace
 process, so that a phone can run a real kernel without root, KVM or a hypervisor.
 
+This repository is an Android/Termux ARM64 downstream port of Linux User-Mode
+Linux (UML). It is not the official UML upstream and it does not claim that
+ARM64 UML is maintained by mainline Linux. The official UML tree targets the
+generic and x86/x86_64 UML implementations; this branch carries the Android
+bionic and ARM64 work needed for phones.
+
+Official upstream: `https://git.kernel.org/pub/scm/linux/kernel/git/uml/linux.git`
+
+Project documentation is under `docs/`: see [UPSTREAM.md](docs/UPSTREAM.md),
+[BUILD.md](docs/BUILD.md), [TESTING.md](docs/TESTING.md),
+[SECURITY.md](docs/SECURITY.md), [CONTRIBUTING.md](docs/CONTRIBUTING.md), and
+[RELEASE.md](docs/RELEASE.md).
+
 ## Status
 
 Working, and tested rather than asserted:
@@ -99,7 +112,7 @@ or `harness/build.sh`, which adds ccache and publishes the binary the gates run.
 **bionic** (Android NDK, what an app can exec):
 
 ```sh
-NDK=/path/to/android-ndk-r27c harness/build-bionic.sh
+NDK=/path/to/android-ndk-r29 harness/build-bionic-termux.sh
 ```
 
 The kernel notices bionic by asking the compiler whether `__ANDROID__` is
@@ -270,16 +283,17 @@ model, host kernel, page size, every cpufreq policy, battery state),
 `env-before/after.txt`. The table is derived only from the TSV, and the TSV only
 from the transcripts, so any of the three can be recomputed from the one below it.
 
-## Upstream
+## Upstream relationship
 
-I am not maintaining this and I am not planning to shepherd it through review.
-Take whatever is useful — individual patches, the whole series, or just the
-harness. It is GPL-2.0 like the rest of the kernel.
+The Linux UML maintainers are Richard Weinberger, Anton Ivanov and Johannes
+Berg. Development happens on `linux-um@lists.infradead.org`; the maintainer
+tree exposes `master`, `next` and `fixes`. The mainline source owns
+`arch/um/`, `arch/x86/um/`, `fs/hostfs/` and the UML documentation.
+
+Generic UML and x86 changes are reviewed for upstream submission separately
+from Android/ARM64-only changes. The downstream branch is kept as a focused
+port, rather than treating the ARM64 fork as a second upstream.
 
 The series is `git format-patch`-ready: one change per commit, DCO signed off,
-`checkpatch` clean apart from six false positives against idioms that appear
-verbatim in mainline (`mb()` with an asm barrier, `ARCH_HAS_SETUP_ADDITIONAL_PAGES`,
-`__SYSCALL(nr, sym)`).
-
-If you do pick it up, the parts most likely to be independently useful are the
-generic `um/` fixes and the x86 ones, which have nothing to do with arm64.
+and checked with the kernel's normal tooling. It is GPL-2.0 like the rest of
+the kernel.

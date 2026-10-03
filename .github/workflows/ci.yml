@@ -20,8 +20,12 @@ jobs:
           sudo apt-get install -y bc bison clang flex libelf-dev libssl-dev lld llvm
       - name: Build x86_64 UML reference
         run: |
-          make ARCH=um SUBARCH=x86 LLVM=1 O=out/x86_64 defconfig
-          make ARCH=um SUBARCH=x86 LLVM=1 O=out/x86_64 -j2
+          make ARCH=um SUBARCH=x86 LLVM=1 O=out/x86_64 \
+            STUB_EXE_LDFLAGS='-fuse-ld=lld -Wl,-n -Wl,--no-rosegment -static' \
+            defconfig
+          make ARCH=um SUBARCH=x86 LLVM=1 O=out/x86_64 \
+            STUB_EXE_LDFLAGS='-fuse-ld=lld -Wl,-n -Wl,--no-rosegment -static' \
+            -j2
 
   harness-checks:
     runs-on: ubuntu-24.04

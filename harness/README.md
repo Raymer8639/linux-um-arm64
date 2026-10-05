@@ -57,3 +57,12 @@ clean shutdown and no BUG/WARNING/panic. It refuses traced containers and
 kills only its own process group on timeout (default 120 seconds).
 Hostfs exposes writable host storage; do not treat it as an untrusted-guest
 security boundary.
+
+## Network bridge prototype
+
+`harness/umnet.c` is the first isolated network integration component. It
+bridges an already-open UML `SOCK_DGRAM` vector fd to an already-open passt
+`SOCK_STREAM` fd. UML datagrams are Ethernet frames; passt frames are prefixed
+with a 32-bit big-endian length. Run `harness/test-umnet.sh` to exercise
+fragmented input, multiple frames, the maximum frame size, and malformed
+lengths. Process spawning and the real Termux data path remain separate gates.

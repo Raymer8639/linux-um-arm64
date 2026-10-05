@@ -24,6 +24,15 @@ The script verifies the Alpine SHA256 and refuses to overwrite existing roots.
 It installs `um-init` and a default `/um-command.sh` which prints uname.
 Edit the command script in the directory root to test other commands.
 
+`um-init` supports two modes. Without `neoproot_protocol=session-v1`, it keeps
+the legacy `/um-command.sh` boot flow. Neoproot session mode is selected with
+the UML command-line parameters `neoproot_protocol=session-v1`,
+`neoproot_session=/SESSION`, and `neoproot_cwd=/GUEST/PATH`; `um-init` reads
+these after mounting `/proc`, `/sys`, and `/dev`, mounts the hostfs session at
+`/run/neoproot`, runs its `init.sh`, and writes the command status there.
+The UML `hostfs=/HOST/RUNTIME` parameter is consumed by the kernel as the
+hostfs root and is intentionally not expected in `/proc/cmdline`.
+
 ```sh
 harness/rootfs-alpine-termux.sh $PREFIX/tmp/um-arm64/rootfs
 ```

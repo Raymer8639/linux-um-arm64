@@ -2,18 +2,9 @@
 
 set -u
 
-cmdline=$(cat /proc/cmdline 2>/dev/null || true)
 session=
-hostfs_root=
 guest_cwd=/
-
-for argument in $cmdline; do
-    case "$argument" in
-        neoproot_session=*) session=${argument#neoproot_session=} ;;
-        hostfs=*) hostfs_root=${argument#hostfs=} ;;
-        neoproot_cwd=*) guest_cwd=${argument#neoproot_cwd=} ;;
-    esac
-done
+protocol=
 
 mount_proc() { mount -t proc proc /proc 2>/dev/null || test -r /proc/self/status; }
 mount_sys() { mount -t sysfs sysfs /sys 2>/dev/null || test -d /sys/kernel; }
@@ -25,7 +16,37 @@ if ! mount_proc || ! mount_sys || ! mount_dev; then
     power_down
 fi
 
+cmdline=$(cat /proc/cmdline 2>/dev/null || true)
+remaining=$cmdline
+space=' '
+tab=$(printf '\t')
+while [ -n "$remaining" ]; do
+    argument=
+    while [ -n "$remaining" ]; do
+        case "$remaining" in
+            "$space"*|"$tab"*)
+                remaining=${remaining#?}
+                if [ -n "$argument" ]; then break; fi
+                ;;
+            *)
+                first=${remaining%"${remaining#?}"}
+                argument=$argument$first
+                remaining=${remaining#?}
+                ;;
+        esac
+    done
+    case "$argument" in
+        neoproot_protocol=*) protocol=${argument#neoproot_protocol=} ;;
+        neoproot_session=*) session=${argument#neoproot_session=} ;;
+        neoproot_cwd=*) guest_cwd=${argument#neoproot_cwd=} ;;
+    esac
+done
+
 if [ -z "$session" ]; then
+    if [ "$protocol" = session-v1 ]; then
+        printf '%s\n' 'UM_SESSION_ERROR=125'
+        power_down
+    fi
     /bin/sh /um-command.sh
     rc=$?
     printf 'UM_COMMAND_EXIT=%s\n' "$rc"
@@ -33,19 +54,31 @@ if [ -z "$session" ]; then
     power_down
 fi
 
-case "$hostfs_root" in
+case "$session" in
+    /*) ;;
+    *) printf '%s\n' 'UM_SESSION_ERROR=125'; power_down ;;
+esac
+case "$guest_cwd" in
     /*) ;;
     *) printf '%s\n' 'UM_SESSION_ERROR=125'; power_down ;;
 esac
 case "$session" in
-    /*|*..*|*,*|*' '*|*'	'*) ;;
-    *) printf '%s\n' 'UM_SESSION_ERROR=125'; power_down ;;
+    /|*..*|*,*|*' '*|*'	'*)
+        printf '%s\n' 'UM_SESSION_ERROR=125'
+        power_down
+        ;;
 esac
 case "$guest_cwd" in
-    /*|*..*|*' '*|*'	'*) ;;
-    *) printf '%s\n' 'UM_SESSION_ERROR=125'; power_down ;;
+    *..*|*,*|*' '*|*'	'*)
+        printf '%s\n' 'UM_SESSION_ERROR=125'
+        power_down
+        ;;
 esac
 
+mount -t tmpfs tmpfs /run 2>/dev/null || test -d /run || {
+    printf '%s\n' 'UM_SESSION_ERROR=125'
+    power_down
+}
 if [ -L /run/neoproot ]; then
     printf '%s\n' 'UM_SESSION_ERROR=125'
     power_down
@@ -60,6 +93,7 @@ if [ ! -x /run/neoproot/init.sh ]; then
     power_down
 fi
 cd "$guest_cwd" 2>/dev/null || {
+    printf '%s\n' '126' > /run/neoproot/status 2>/dev/null || true
     printf '%s\n' '126'
     printf '%s\n' 'UM_COMMAND_EXIT=126'
     power_down

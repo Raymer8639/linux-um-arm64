@@ -11,6 +11,7 @@ and contain no `BUG:`, `WARNING:` or kernel panic.
 | Build | x86_64 glibc UML and Android ARM64 bionic UML |
 | Interception | `seccomp=on`, `seccomp=off`, `nosysemu`, `nocancel` |
 | Storage | hostfs directory root, ext4 image, bind mounts, read/write and exit status |
+| Neoproot session | `neoproot_protocol=session-v1`, hostfs session mount, cwd, status and exit code |
 | Console | pty input/output and non-pollable stdin fallback |
 | Memory | 4 KB and 16 KB guest page configurations where supported |
 | Networking | loopback, passt vector fd, DHCP, DNS and TCP |

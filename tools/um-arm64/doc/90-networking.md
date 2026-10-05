@@ -132,6 +132,13 @@ Android permits for the shell uid via `ping_group_range`.
 `./deb` wires this up automatically when `umnet` and `passt` are present next to
 the kernel; `UMDEB_NET=0` turns it off.
 
+The CI harness includes `harness/test-umnet.sh`, which compiles the existing
+`harness/umnet.c` and exercises its real process boundary with mock UML and
+passt binaries. It verifies the vector fd argument, passt configuration,
+bidirectional framing, fragmented stream input, and clean child reaping. This
+is a protocol gate; DHCP/DNS/TCP still require the Termux host gate described
+above.
+
 ## Gotchas
 
 * **The guest interface is `vec0`, not `eth0`.** UML's vector driver names them

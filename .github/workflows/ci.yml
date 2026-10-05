@@ -36,7 +36,7 @@ jobs:
           bash -n harness/*.sh tools/um-arm64/harness/*.sh
           sh -n harness/um-init harness/test-um-init.sh
           harness/test-um-init.sh
-          sh harness/test-umnet.sh
+          sh tools/um-arm64/harness/test-umnet.sh
           python3 -m py_compile harness/*.py
       - name: Check required project documents
         run: |

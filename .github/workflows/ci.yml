@@ -38,7 +38,10 @@ jobs:
           harness/test-um-init.sh
           harness/test-um-init-cmdline.sh
           sh tools/um-arm64/harness/test-umnet.sh
-          python3 -m py_compile harness/*.py tools/um-arm64/harness/test-umnet-network.sh
+          python3 -m py_compile harness/*.py tools/um-arm64/harness/test-umnet-network.sh tools/um-arm64/harness/verify-release.py
+          # Prove the release checker rejects broken releases.  A checker that
+          # has never rejected anything is not a checker.
+          python3 tools/um-arm64/harness/verify-release.py self-test
           # Syntax only: the network gate needs a real kernel and passt on the
           # Termux host, so CI checks that it parses and reports its usage.
           python3 tools/um-arm64/harness/test-umnet-network.sh --help >/dev/null

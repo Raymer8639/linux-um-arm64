@@ -46,6 +46,7 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
@@ -54,11 +55,24 @@
 #define PFX		4		/* qemu socket protocol length prefix */
 
 static pid_t passt_pid;
+static pid_t uml_pid_global;		/* for the signal handler only */
+static pid_t parent_pid;		/* umnet's own pid, for the PDEATHSIG check */
 static int verbose;			/* --verbose: log every frame both ways */
 
+/*
+ * Take the whole run down with us.
+ *
+ * The kernel is our child and would otherwise outlive us: whoever started
+ * umnet kills umnet, not the kernel, so a supervisor reaping its child left a
+ * booted guest running with a socket nobody was pumping any more.  Kill the
+ * kernel's process group as well as passt; the group is what UML's own
+ * children end up in.
+ */
 static void reap(int sig)
 {
 	(void)sig;
+	if (uml_pid_global > 0)
+		kill(-uml_pid_global, SIGKILL);
 	if (passt_pid > 0)
 		kill(passt_pid, SIGTERM);
 	_exit(0);
@@ -249,6 +263,8 @@ int main(int argc, char **argv)
 	signal(SIGINT, reap);
 	signal(SIGTERM, reap);
 
+	parent_pid = getpid();
+
 	passt_pid = fork();
 	if (passt_pid < 0) {
 		perror("umnet: fork");
@@ -322,6 +338,7 @@ int main(int argc, char **argv)
 	close(passt_sp[0]);
 
 	uml_pid = fork();
+	uml_pid_global = uml_pid;
 	if (uml_pid < 0) {
 		perror("umnet: fork");
 		return 1;
@@ -329,6 +346,21 @@ int main(int argc, char **argv)
 	if (uml_pid == 0) {
 		close(uml_sp[1]);
 		close(passt_sp[1]);
+		/*
+		 * Die with our parent.  A supervisor that reaps umnet with
+		 * SIGKILL cannot be helped by the signal handler above -- the
+		 * handler never runs -- so tie the kernel's life to ours in the
+		 * kernel instead.  Without this a killed bridge leaves a booted
+		 * guest running with a socket nobody pumps.
+		 *
+		 * Deliberately no setpgid() here: the kernel inherits our
+		 * session and controlling terminal, and putting it in a fresh
+		 * group detaches the console it was given, so the guest stops
+		 * booting.  PDEATHSIG covers the kill case without that.
+		 */
+		prctl(PR_SET_PDEATHSIG, SIGKILL);
+		if (getppid() != parent_pid)
+			_exit(127);
 
 		/* The descriptor has to survive exec for UML to use it. */
 		if (fcntl(uml_sp[0], F_SETFD, 0) < 0) {

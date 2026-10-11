@@ -34,8 +34,9 @@ jobs:
       - name: Check harness scripts
         run: |
           bash -n harness/*.sh tools/um-arm64/harness/*.sh
-          sh -n harness/um-init harness/test-um-init.sh
+          sh -n harness/um-init harness/test-um-init.sh harness/test-um-init-cmdline.sh
           harness/test-um-init.sh
+          harness/test-um-init-cmdline.sh
           sh tools/um-arm64/harness/test-umnet.sh
           python3 -m py_compile harness/*.py tools/um-arm64/harness/test-umnet-network.sh
           # Syntax only: the network gate needs a real kernel and passt on the

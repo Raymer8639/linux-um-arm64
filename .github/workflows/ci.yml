@@ -29,6 +29,50 @@ jobs:
             STUB_EXE_LDFLAGS='-fuse-ld=lld -Wl,-n -Wl,--no-rosegment -static' \
             -j2
 
+  # Cross-compile the parts that have to run on the phone.  Deliberately
+  # non-blocking: it needs a 3 GB NDK download, so a network hiccup on the
+  # runner would otherwise turn a green tree red for reasons that have nothing
+  # to do with the change.  Its job is to tell us early that the bionic build
+  # path broke, not to gate merges -- the Termux host gate is the real
+  # evidence, and it cannot run here at all.
+  android-bionic-build:
+    name: android-bionic-build
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NDK r29
+        run: |
+          set -eux
+          curl -fsSL -o "$RUNNER_TEMP/ndk.zip" \
+            https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/android-ndk-r29" "$RUNNER_TEMP/ndk"
+          echo "NDK=$RUNNER_TEMP/ndk" >> "$GITHUB_ENV"
+
+      - name: Cross-compile umnet for Android
+        run: |
+          set -eux
+          TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          "$TOOL/clang" --target=aarch64-linux-android30 -static -O2 \
+            -std=c11 -Wall -Wextra -Werror \
+            tools/um-arm64/harness/umnet.c -o "$RUNNER_TEMP/umnet"
+          file "$RUNNER_TEMP/umnet"
+          file "$RUNNER_TEMP/umnet" | grep -q 'ARM aarch64'
+          file "$RUNNER_TEMP/umnet" | grep -q 'statically linked'
+
+      - name: Prove the Android build is what the phone needs
+        run: |
+          set -eux
+          # No interpreter: Android has no /lib/ld-linux-aarch64.so.1, so a
+          # dynamically linked binary dies before main with no output at all.
+          if readelf -l "$RUNNER_TEMP/umnet" | grep -q INTERP; then
+            echo "umnet has an interpreter (not static)" >&2
+            exit 1
+          fi
+          readelf -h "$RUNNER_TEMP/umnet" | grep -q AArch64
+
   harness-checks:
     runs-on: ubuntu-24.04
     steps:

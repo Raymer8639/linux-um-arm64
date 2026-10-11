@@ -33,6 +33,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Install a cross compiler for the release fixtures
+        run: |
+          sudo apt-get update
+          # The release checker's self-test builds its fixtures with TARGET_CC
+          # when one is available, so the aarch64 gate is exercised on a real
+          # binary instead of a synthesised header.
+          sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Check harness scripts
         run: |
           bash -n harness/*.sh tools/um-arm64/harness/*.sh
@@ -42,8 +49,11 @@ jobs:
           sh tools/um-arm64/harness/test-umnet.sh
           python3 -m py_compile harness/*.py tools/um-arm64/harness/test-umnet-network.sh tools/um-arm64/harness/verify-release.py
           # Prove the release checker rejects broken releases.  A checker that
-          # has never rejected anything is not a checker.
-          python3 tools/um-arm64/harness/verify-release.py self-test
+          # has never rejected anything is not a checker.  TARGET_CC makes the
+          # fixtures real aarch64 binaries, so the architecture gate is covered
+          # rather than reported as synthesised.
+          TARGET_CC=aarch64-linux-gnu-gcc \
+            python3 tools/um-arm64/harness/verify-release.py self-test
           # Syntax only: the network gate needs a real kernel and passt on the
           # Termux host, so CI checks that it parses and reports its usage.
           python3 tools/um-arm64/harness/test-umnet-network.sh --help >/dev/null

@@ -555,10 +555,29 @@ def cmd_self_test(args):
     stub = os.path.join(workdir, "stub")
     subprocess.run([target_cc or cc, "-static", "-o", stub, stub_source],
                    check=True)
+    # A release fixture has to be aarch64, because that is what check_elf()
+    # demands of every published asset and make() validates what it publishes.
+    # Set TARGET_CC to a bionic cross compiler to exercise this honestly.
     aarch64 = elf_facts(good)["machine"] == 183
     if not aarch64:
-        print("self-test: target compiler is not aarch64; the arch check is "
-              "exercised with a synthesised header instead", file=sys.stderr)
+        # Without an aarch64 compiler the fixtures cannot be real assets.  The
+        # cases below are still worth running -- they cover hashing, the
+        # manifest parser and the consistency checks, none of which care about
+        # the architecture -- so rewrite e_machine to get past the arch gate.
+        # What this deliberately does NOT do is claim the arch gate was tested:
+        # a fixture whose header was edited proves nothing about a real binary,
+        # and reporting it as verified would be the same class of lie as
+        # recording an ext4 skip as a pass.
+        print("self-test: host compiler is not aarch64; the fixtures use a "
+              "synthesised header, so the ARCH CHECK IS NOT COVERED "
+              "(set TARGET_CC to a bionic compiler to cover it)",
+              file=sys.stderr)
+        for path in (good, stub):
+            with open(path, "r+b") as handle:
+                handle.seek(18)
+                handle.write((183).to_bytes(2, "little"))
+        if elf_facts(good)["machine"] != 183:
+            fail("could not synthesise an aarch64 header")
 
     cases = []
 

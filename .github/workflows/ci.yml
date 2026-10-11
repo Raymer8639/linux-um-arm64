@@ -3,8 +3,10 @@ name: UML CI
 on:
   push:
     branches: [um-arm64]
+  # Every pull request, not just the ones aimed at the default branch: a
+  # stacked PR targeting another feature branch would otherwise get no CI at
+  # all, which is exactly when a reviewer most wants it.
   pull_request:
-    branches: [um-arm64]
 
 permissions:
   contents: read

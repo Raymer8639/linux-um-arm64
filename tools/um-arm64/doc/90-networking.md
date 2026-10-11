@@ -185,7 +185,26 @@ One trap worth knowing: UML needs a **controlling terminal**. With
 `con0=fd:0,fd:1` on a plain pipe the guest hangs before userspace, so the gate
 runs the bridge on a pty, exactly as `boot.py` does.
 
+## Throughput
+
+Guest and host fetching the same 10 MB payload from the public internet, so the
+number includes the phone's uplink:
+
+| where | time | rate |
+| --- | --- | --- |
+| Termux host (no UML, no bridge) | 14.2 s | 5.9 Mbit/s |
+| guest through UML + umnet + passt | 15.9-17.9 s | 4.7-5.3 Mbit/s |
+
+So the bridge costs roughly 10-20% on a transfer that is already bounded by the
+uplink. It is not the bottleneck, and a faster phone uplink would be the first
+thing to change before this measurement says anything about the bridge itself.
+`vm.net.vector` work is not worth starting on the strength of these numbers.
+
+Latency to the emulated gateway is single-digit milliseconds (ICMP RTT
+5.6-6.4 ms, measured in the host gate).
+
 ## Gotchas
+
 
 * **The guest interface is `vec0`, not `eth0`.** UML's vector driver names them
   that way. Half an hour went into a test script that configured an interface

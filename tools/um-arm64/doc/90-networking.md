@@ -70,31 +70,45 @@ transports. `tap`, `raw`, `bess`, `vde` and `fd` never call it, and where it is
 called a static binary degrades rather than breaks -- numeric addresses resolve
 without NSS. Dropped it, with the reasoning recorded in the Kconfig.
 
-## Three patches to passt, all the same shape
+## How passt is made to run on Android
 
 passt self-isolates aggressively at startup. Every one of those steps assumes a
-capability an Android app process does not have, and each was fatal:
+capability an Android app process does not have. Measured on Termux (Android 13,
+kernel 5.15.194, ordinary app uid):
 
-1. **`ns_is_init()` opened `/proc/self/uid_map`** and called `die_perror()` if it
-   could not. That file does not exist when the kernel is built without
-   `CONFIG_USER_NS` -- which this one is (`# CONFIG_USER_NS is not set`). A
-   missing uid_map means there is exactly one user namespace and we are in it,
-   so ENOENT now returns true instead of dying.
-2. **`unshare(CLONE_NEWUSER)`** fails with EINVAL for the same reason. Now a
-   warning, not a death: passt continues as the unprivileged uid it already was.
-3. **`unshare(CLONE_NEWIPC|CLONE_NEWNS|CLONE_NEWUTS)`** in `isolate_prefork()`
-   fails with EPERM. Everything after it in that function -- remounting `/`, a
-   private tmpfs, `pivot_root` -- needs the same privileges, so the whole prefork
-   isolation is skipped rather than failing one step at a time.
+| call | result |
+| --- | --- |
+| `socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE)` | `EPERM` |
+| `setgroups(0, NULL)` | `SIGSYS` (app seccomp kills the process) |
+| `clone(CLONE_NEWUSER)` | `EINVAL` |
+| `unshare(CLONE_NEWNS\|CLONE_NEWIPC\|CLONE_NEWUTS)` | `EPERM` |
 
-These weaken passt's sandbox and that is a real trade, stated plainly: passt
-ends up running as an ordinary unprivileged uid with no namespace isolation. Its
-**seccomp filter still applies**, so the syscall surface is still restricted, and
-the process never had privileges to lose in the first place. The alternative was
-no networking.
+A passt that only has to serve one prearranged interface -- one end of a
+socketpair handed over by umnet -- needs none of them. passt therefore detects
+that case and skips the whole dance. The check is `fd_prepatched()`: the `--fd`
+descriptor is a socket, so a parent already prepared the interface.
 
-All three are candidates to send upstream: "run correctly on a kernel without
-CONFIG_USER_NS" is a reasonable thing for passt to support.
+* `conf()`: with an explicit configuration there is nothing to discover, so
+  `nl_sock_init()` is skipped and the local-mode IPv4 values are used directly.
+* `isolate_user()`: returns early -- no `setgroups()`, no user namespace.
+* `isolate_prefork()`: skips `unshare()` and the mount/`pivot_root` sandbox,
+  still dropping capabilities.
+* `passt.c`: skips `nl_neigh_notify_init()` for the same reason.
+* `make_ugid_map()`: writing `deny` to `/proc/<pid>/setgroups` is only needed to
+  make the gid map writable on kernels that have the file; failure is no longer
+  fatal.
+
+This is upstream in `Raymer8639/passt-android` as commit `25f9c1f`
+(PR #1). The `--fd`-less and non-socket-`--fd` paths -- ordinary passt and pasta
+-- are untouched and still take the full isolation sequence.
+
+The trade is stated plainly: in this mode passt runs as an ordinary
+unprivileged uid with no namespace isolation. Its **seccomp filter still
+applies**, so the syscall surface is still restricted, and the process never had
+privileges to lose in the first place. The alternative was no networking.
+
+Worth sending upstream: "run correctly when handed an interface socket and
+denied namespace creation" is a reasonable thing for passt to support.
 
 ## Configuration passt cannot discover
 
@@ -122,22 +136,54 @@ udhcpc: lease of 10.0.2.15 obtained from 10.0.2.2, lease time 4294967295
     inet 10.0.2.15/24 scope global vec0
 default via 10.0.2.2 dev vec0
 nslookup example.com  ->  104.20.23.154, 172.66.147.243
-wget http://example.com/  ->  OK, 559 bytes
-<!doctype html><html lang="en"><head><title>Example Domain</title>...
+ping -c 2 10.0.2.2    ->  2 packets transmitted, 2 packets received (5.6-6.4 ms)
+wget http://example.com/  ->  OK, 577 bytes
+<!doctype html><html lang=en><head><title>Example Domain</title>...
 ```
 
 ICMP works too: passt implements ping with `SOCK_DGRAM` ICMP sockets, which
-Android permits for the shell uid via `ping_group_range`.
+Android permits via `ping_group_range`.
 
 `./deb` wires this up automatically when `umnet` and `passt` are present next to
 the kernel; `UMDEB_NET=0` turns it off.
 
-The CI harness includes `harness/test-umnet.sh`, which compiles the existing
+## Gates
+
+Two gates cover this path, and neither replaces the other.
+
+**`harness/test-umnet.sh`** is the protocol gate and runs anywhere. It compiles
 `harness/umnet.c` and exercises its real process boundary with mock UML and
-passt binaries. It verifies the vector fd argument, passt configuration,
-bidirectional framing, fragmented stream input, and clean child reaping. This
-is a protocol gate; DHCP/DNS/TCP still require the Termux host gate described
-above.
+passt binaries: the vector fd argument, passt configuration, bidirectional
+framing, fragmented stream input, and clean child reaping.
+
+**`harness/test-umnet-network.sh`** is the Termux host gate and needs a real
+kernel, rootfs and passt build. Run it on the phone, not inside a container:
+
+```sh
+python3 harness/test-umnet-network.sh --workdir "$PREFIX/tmp/um-network"
+```
+
+It boots the guest through `umnet`, then judges nine things from the guest's own
+output: DHCP lease, address, default route, announced resolver, ICMP, DNS
+resolution, IPv4 TCP fetch, six concurrent fetches, and clean command exit. It
+prints `verdict=PASS|FAIL` and writes the full console log next to the workdir.
+Setup it expects:
+
+| path | what |
+| --- | --- |
+| `$PREFIX/tmp/um-arm64/new/linux-bionic` | UML kernel |
+| `$PREFIX/tmp/um-arm64/new/stub_exe` | stub for the kernel |
+| `<workdir>/passt-bionic` | passt built for Android 30 |
+| `<workdir>/umnet` | bridge built from `harness/umnet.c` |
+| `<workdir>/netroot` | Alpine hostfs root |
+
+The guest command script is written by the gate itself, so the checks and the
+commands that produce them cannot drift apart. Five consecutive runs pass with
+no leftover processes.
+
+One trap worth knowing: UML needs a **controlling terminal**. With
+`con0=fd:0,fd:1` on a plain pipe the guest hangs before userspace, so the gate
+runs the bridge on a pty, exactly as `boot.py` does.
 
 ## Gotchas
 
@@ -151,3 +197,9 @@ above.
 * **Binding a UNIX socket under `/data/local/tmp` is denied** by SELinux, so
   passt's `-s` mode cannot be used. `-F` with an inherited descriptor can, which
   is what umnet does anyway.
+* **A guest that powers off does not end the run by itself.** UML closes its end
+  of the datagram pair, but passt holds its own end open forever -- it has no way
+  to learn the guest is gone -- so a pump that only waits for the link to close
+  blocks in `poll()` indefinitely. `umnet` therefore waits on the kernel with
+  `WNOHANG` between poll rounds as well; otherwise it never reaps the kernel or
+  reports its exit status, and an automated gate hangs instead of failing.

@@ -43,6 +43,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -101,77 +102,75 @@ static int write_full(int fd, const void *buf, size_t n)
 }
 
 /*
- * Pump frames both ways until either side closes.
+ * Move whatever is ready in one poll round.
  *
- * Deliberately single-threaded with poll() rather than two threads: the two
- * directions share nothing, the traffic a phone guest generates is far below
- * what one core can shuffle, and a second thread would only add a way to get
- * the shutdown ordering wrong.
+ * Returns 0 to keep pumping, -1 when the link is finished: either side closed,
+ * or a write failed in a way that means the peer is gone.
  */
-static void pump(int uml_fd, int passt_fd)
+static int pump_once(int uml_fd, int passt_fd, int timeout_ms)
 {
 	static unsigned char frame[PFX + MAX_FRAME];
 	struct pollfd pfd[2];
+	int ready;
 
 	pfd[0].fd = uml_fd;
 	pfd[1].fd = passt_fd;
+	pfd[0].events = pfd[1].events = POLLIN;
 
-	for (;;) {
-		pfd[0].events = pfd[1].events = POLLIN;
+	ready = poll(pfd, 2, timeout_ms);
+	if (ready < 0)
+		return errno == EINTR ? 0 : -1;
+	if (ready == 0)
+		return 0;
 
-		if (poll(pfd, 2, -1) < 0) {
-			if (errno == EINTR)
-				continue;
-			return;
-		}
+	/* guest -> host: datagram in, length-prefixed out */
+	if (pfd[0].revents & POLLIN) {
+		ssize_t n = recv(uml_fd, frame + PFX, MAX_FRAME, 0);
 
-		/* guest -> host: datagram in, length-prefixed out */
-		if (pfd[0].revents & POLLIN) {
-			ssize_t n = recv(uml_fd, frame + PFX, MAX_FRAME, 0);
+		if (n <= 0 && !(n < 0 && errno == EINTR))
+			return -1;
+		if (n > 0) {
+			uint32_t len = htonl((uint32_t)n);
 
-			if (n <= 0 && !(n < 0 && errno == EINTR))
-				return;
-			if (n > 0) {
-				uint32_t len = htonl((uint32_t)n);
-
-				memcpy(frame, &len, PFX);
-				if (verbose)
-					fprintf(stderr, "umnet: guest->host %zd\n", n);
-				if (write_full(passt_fd, frame, PFX + n))
-					return;
-			}
-		}
-
-		/* host -> guest: length-prefixed in, datagram out */
-		if (pfd[1].revents & POLLIN) {
-			uint32_t len;
-			int r = read_full(passt_fd, &len, PFX);
-
-			if (r <= 0)
-				return;
-			len = ntohl(len);
-			if (len == 0 || len > MAX_FRAME) {
-				fprintf(stderr, "umnet: bad frame length %u\n", len);
-				return;
-			}
-			if (read_full(passt_fd, frame, len) <= 0)
-				return;
+			memcpy(frame, &len, PFX);
 			if (verbose)
-				fprintf(stderr, "umnet: host->guest %u\n", len);
-			/*
-			 * A datagram socket has no partial writes, and a frame
-			 * dropped here is exactly what a dropped packet is on
-			 * real hardware -- so failure is not fatal, the guest's
-			 * TCP will retransmit.
-			 */
-			if (send(uml_fd, frame, len, MSG_DONTWAIT) < 0 &&
-			    errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-				return;
+				fprintf(stderr, "umnet: guest->host %zd\n", n);
+			if (write_full(passt_fd, frame, PFX + n))
+				return -1;
 		}
-
-		if ((pfd[0].revents | pfd[1].revents) & (POLLERR | POLLHUP))
-			return;
 	}
+
+	/* host -> guest: length-prefixed in, datagram out */
+	if (pfd[1].revents & POLLIN) {
+		uint32_t len;
+		int r = read_full(passt_fd, &len, PFX);
+
+		if (r <= 0)
+			return -1;
+		len = ntohl(len);
+		if (len == 0 || len > MAX_FRAME) {
+			fprintf(stderr, "umnet: bad frame length %u\n", len);
+			return -1;
+		}
+		if (read_full(passt_fd, frame, len) <= 0)
+			return -1;
+		if (verbose)
+			fprintf(stderr, "umnet: host->guest %u\n", len);
+		/*
+		 * A datagram socket has no partial writes, and a frame
+		 * dropped here is exactly what a dropped packet is on
+		 * real hardware -- so failure is not fatal, the guest's
+		 * TCP will retransmit.
+		 */
+		if (send(uml_fd, frame, len, MSG_DONTWAIT) < 0 &&
+		    errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+			return -1;
+	}
+
+	if ((pfd[0].revents | pfd[1].revents) & (POLLERR | POLLHUP))
+		return -1;
+
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -185,6 +184,8 @@ int main(int argc, char **argv)
 	const char *gw = "10.0.2.2";	/* passt -g: gateway passt emulates */
 	int uml_sp[2], passt_sp[2], i, umlarg;
 	int status, rc = 0;
+	int kernel_status;
+	bool kernel_reaped;
 	char vecarg[128];
 	char **child;
 	pid_t uml_pid;
@@ -352,31 +353,52 @@ int main(int argc, char **argv)
 
 	close(uml_sp[0]);
 
-	pump(uml_sp[1], passt_sp[1]);
+	/*
+	 * Pump frames until the guest goes away, not merely until the link
+	 * goes quiet.  When UML powers off it closes its end of the datagram
+	 * pair, but passt holds its own end open indefinitely: it has no way
+	 * to know the guest is gone, so the pump would block in poll() forever
+	 * and umnet would never reap the kernel or report its status.  Wait on
+	 * the kernel as well, so a guest that exits cleanly ends the run.
+	 */
+	kernel_status = 0;
+	kernel_reaped = false;
+	for (;;) {
+		pid_t done = waitpid(uml_pid, &kernel_status, WNOHANG);
+
+		if (done == uml_pid) {
+			kernel_reaped = true;
+			break;
+		}
+		if (done < 0 && errno != EINTR)
+			break;
+		if (pump_once(uml_sp[1], passt_sp[1], 200) < 0)
+			break;
+	}
 
 	/*
 	 * The guest is gone or the link broke; take passt with it.
 	 *
-	 * Reap the kernel with a blocking wait and report how it died. This was
-	 * WNOHANG with a discarded status and an unconditional "return 0", which
-	 * made every possible failure -- a kernel killed by a signal, a kernel
-	 * that panicked, a kernel that never started -- reach the caller as
-	 * "exited, status 0". Inside an Android app, where a sandbox can kill the
-	 * process outright and there is no shell to ask, that is the difference
-	 * between a diagnosis and a guess.
+	 * Report how the kernel died. This was WNOHANG with a discarded status
+	 * and an unconditional "return 0", which made every possible failure --
+	 * a kernel killed by a signal, a kernel that panicked, a kernel that
+	 * never started -- reach the caller as "exited, status 0". Inside an
+	 * Android app, where a sandbox can kill the process outright and there
+	 * is no shell to ask, that is the difference between a diagnosis and a
+	 * guess.
 	 */
 	kill(passt_pid, SIGTERM);
 
-	if (waitpid(uml_pid, &status, 0) < 0) {
+	if (!kernel_reaped && waitpid(uml_pid, &kernel_status, 0) < 0) {
 		perror("umnet: waitpid");
 		rc = 1;
-	} else if (WIFSIGNALED(status)) {
+	} else if (WIFSIGNALED(kernel_status)) {
 		fprintf(stderr, "umnet: kernel killed by signal %d (%s)%s\n",
-			WTERMSIG(status), strsignal(WTERMSIG(status)),
-			WCOREDUMP(status) ? ", core dumped" : "");
-		rc = 128 + WTERMSIG(status);
-	} else if (WIFEXITED(status)) {
-		rc = WEXITSTATUS(status);
+			WTERMSIG(kernel_status), strsignal(WTERMSIG(kernel_status)),
+			WCOREDUMP(kernel_status) ? ", core dumped" : "");
+		rc = 128 + WTERMSIG(kernel_status);
+	} else if (WIFEXITED(kernel_status)) {
+		rc = WEXITSTATUS(kernel_status);
 		if (rc)
 			fprintf(stderr, "umnet: kernel exited %d\n", rc);
 	}

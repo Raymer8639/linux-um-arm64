@@ -37,7 +37,10 @@ jobs:
           sh -n harness/um-init harness/test-um-init.sh
           harness/test-um-init.sh
           sh tools/um-arm64/harness/test-umnet.sh
-          python3 -m py_compile harness/*.py
+          python3 -m py_compile harness/*.py tools/um-arm64/harness/test-umnet-network.sh
+          # Syntax only: the network gate needs a real kernel and passt on the
+          # Termux host, so CI checks that it parses and reports its usage.
+          python3 tools/um-arm64/harness/test-umnet-network.sh --help >/dev/null
       - name: Check required project documents
         run: |
           test -s README.md

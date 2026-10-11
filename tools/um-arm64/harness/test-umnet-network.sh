@@ -157,11 +157,12 @@ def run_gate(args):
 
     write_guest_command(netroot)
     log_path = os.path.join(args.workdir, args.log)
-    cmd = [umnet, "--passt", passt, "--", kernel,
+    cmd = [umnet, "--passt", passt, "--dns", args.dns, "--", kernel,
            "mem=512M", "rw", "init=/um-init", "con=null", "con0=fd:0,fd:1",
            "stub_exe=" + stub, "rootfstype=hostfs", "rootflags=" + netroot,
            "panic=1"]
-    print("gate: running on pty, timeout=%ss" % args.timeout, file=sys.stderr)
+    print("gate: running on pty, timeout=%ss, announced dns=%s"
+          % (args.timeout, args.dns), file=sys.stderr)
 
     completed, raw = run_on_pty(cmd, args.timeout)
     text = raw.decode("utf-8", errors="replace").replace("\r", "")
@@ -172,7 +173,10 @@ def run_gate(args):
         ("dhcp", r"lease of 10\.0\.2\.15 obtained from 10\.0\.2\.2"),
         ("addr", r"inet 10\.0\.2\.15/24"),
         ("route", r"default via 10\.0\.2\.2 dev vec0"),
-        ("dns-config", r"nameserver 1\.1\.1\.1"),
+        # Any announced resolver proves the handshake; asserting a specific
+        # address would fail on a network that blocks that one and say nothing
+        # about the build.
+        ("dns-config", r"nameserver \d+\.\d+\.\d+\.\d+"),
         ("icmp", r"2 packets transmitted, 2 packets received"),
         ("dns-lookup", r"Name:\s*example\.com\s*\nAddress:\s*\d+\.\d+\.\d+\.\d+"),
         ("tcp", r"Example Domain"),
@@ -218,6 +222,12 @@ def main():
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--check-host-only", action="store_true",
                         help="verify the host is untraced and assets exist")
+    parser.add_argument("--dns", default="1.1.1.1",
+                        help="nameserver passt announces to the guest (default: "
+                             "1.1.1.1).  Some networks block plain DNS to "
+                             "particular resolvers, which breaks the guest's "
+                             "lookups without anything being wrong with the "
+                             "build; pass a resolver this network reaches.")
     args = parser.parse_args()
 
     if args.timeout <= 0:

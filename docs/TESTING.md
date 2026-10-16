@@ -34,3 +34,25 @@ streaming logs can hide the failure tail.
 
 UML must not be launched from inside a neoproot container. The harness should
 fail early when `TracerPid` is nonzero.
+
+## Device Gates and Evidence
+
+The gates under `tools/um-arm64/harness/` run on the Termux host, so CI cannot
+run them and their verdicts have to be archived by hand. The format and the
+honesty rules are in [docs/evidence/README.md](evidence/README.md):
+
+```sh
+# one device run of the network gate, archived with hashes and gaps
+tools/um-arm64/harness/record-evidence.sh record --out docs/evidence
+tools/um-arm64/harness/record-evidence.sh check docs/evidence/<file>.json --verify-hashes
+
+# repetition, resource leaks and drift
+tools/um-arm64/harness/soak-umnet.sh --rounds 20
+
+# link loss, guest kernel panic, UML process killed mid-run
+tools/um-arm64/harness/inject-faults.sh --scenario link-drop
+```
+
+Each tool has an offline `self-test` that needs no phone; those self-tests are
+what CI can run. `verdict=SKIP` (exit 77) means the environment made the run
+impossible -- missing assets, no passt, a traced host -- and is never a pass.

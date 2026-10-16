@@ -1,0 +1,23 @@
+NET_START
+1: vec0: <BROADCAST,MULTICAST,UP> mtu 1500
+NET_VEC_UP
+NET_DHCP
+udhcpc: lease of 10.0.2.15 obtained from 10.0.2.2, lease time 86400
+    inet 10.0.2.15/24 scope global vec0
+    default via 10.0.2.2 dev vec0
+nameserver 1.1.1.1
+NET_PING_GW
+2 packets transmitted, 2 packets received, 0% packet loss
+time=1.2 ms
+NET_DNS
+Name:      example.com
+Address:   93.184.216.34
+NET_TCP
+<!doctype html><html><head><title>Example Domain</title>
+NET_TCP_DONE
+NET_CONCURRENT
+NET_CONCURRENT_RC=0
+NET_LATENCY
+NET_DONE
+umnet: passt exited
+UM_NET_COMMAND_EXIT=0

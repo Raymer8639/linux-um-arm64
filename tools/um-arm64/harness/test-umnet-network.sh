@@ -31,6 +31,10 @@ import time
 
 PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
 
+# Exit code convention shared with harness/boot.py and verify-release.py: 77
+# means "could not be attempted", never "good enough".
+EXIT_SKIP = 77
+
 # The guest command script.  Written by this gate into the hostfs root so the
 # measured behaviour lives in one place rather than in an ad-hoc shell snippet.
 GUEST_COMMAND = """#!/bin/sh
@@ -78,6 +82,20 @@ exit 0
 def fail(message):
     print("gate: " + message, file=sys.stderr)
     raise SystemExit(1)
+
+
+def skip(message):
+    """The gate cannot be attempted here, so it judges nothing.
+
+    Missing assets or a traced container are facts about the environment, not
+    about the build.  Reporting them as FAIL would hide the difference between
+    "this is broken" and "this was never tested", which is exactly the
+    difference a release record has to keep.  Exit 77 is the harness-wide
+    convention for it (see docs/RELEASE.md).
+    """
+    print("gate: " + message, file=sys.stderr)
+    print("verdict=SKIP", file=sys.stderr)
+    raise SystemExit(EXIT_SKIP)
 
 
 def write_guest_command(netroot):
@@ -151,9 +169,9 @@ def run_gate(args):
 
     for path in (umnet, passt, kernel, stub):
         if not os.path.isfile(path) or not os.access(path, os.X_OK):
-            fail("not an executable file: " + path)
+            skip("not an executable file: " + path)
     if not os.path.isdir(netroot):
-        fail("missing hostfs root: " + netroot)
+        skip("missing hostfs root: " + netroot)
 
     write_guest_command(netroot)
     log_path = os.path.join(args.workdir, args.log)
@@ -235,14 +253,20 @@ def main():
     with open("/proc/self/status", encoding="ascii") as status_file:
         for line in status_file:
             if line.startswith("TracerPid:") and int(line.split()[1]):
-                fail("run on the Termux host, not inside a traced container")
+                skip("run on the Termux host, not inside a traced container")
 
     if args.check_host_only:
+        missing = []
         for name in ("umnet", "passt-bionic"):
             path = os.path.join(args.workdir, name)
-            print("%-14s %s" % (name, "present" if os.path.isfile(path)
-                                else "MISSING"))
-        return 0
+            present = os.path.isfile(path)
+            print("%-14s %s" % (name, "present" if present else "MISSING"))
+            if not present:
+                missing.append(name)
+        # An asset check is a readiness question, so answer it in the same
+        # vocabulary the gate uses for the same situation.
+        print("verdict=" + ("SKIP" if missing else "PASS"), file=sys.stderr)
+        return EXIT_SKIP if missing else 0
 
     return run_gate(args)
 

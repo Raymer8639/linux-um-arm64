@@ -31,7 +31,12 @@
  * argument that points at it.
  *
  * Usage:
- *   umnet [--passt PATH] [--mac MAC] -- ./linux <uml args...>
+ *   umnet [--passt PATH] [--mac MAC] [--iface IF] [--dns ADDR|none]
+ *         [--addr A] [--mask N] [--gw G] [--verbose] -- ./linux <uml args...>
+ *
+ * --dns defaults to the first nameserver the host's resolv.conf names ($PREFIX
+ * first for Termux, then /etc), and only falls back to 1.1.1.1 if neither is
+ * readable.  `--dns none` announces no resolver at all.
  *
  * The UML side ends up with, appended to its command line:
  *   vec0:transport=fd,fd=<n>,mac=<mac>
@@ -40,6 +45,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
@@ -187,12 +193,77 @@ static int pump_once(int uml_fd, int passt_fd, int timeout_ms)
 	return 0;
 }
 
+/*
+ * Pick the nameserver to announce when the caller did not name one.
+ *
+ * The old default was the literal "1.1.1.1", and that is a guess about the
+ * network rather than about the build.  When the network in question blocks
+ * that one resolver -- which happened here -- the guest's lookups fail, the
+ * gate reports FAIL, and nothing in the output says the address was invented
+ * on this side.  So ask the host first.
+ *
+ * Android has no /etc/resolv.conf (DNS goes through netd), but Termux has one
+ * under $PREFIX, and every ordinary Linux host has the other path.  Try both
+ * and fall back to the old literal only if neither is readable.
+ *
+ * Returns a malloc'd string, or NULL when nothing was found.
+ */
+static char *dns_from_resolv_conf(void)
+{
+	char path[PATH_MAX];
+	const char *candidates[3];
+	int n = 0, i;
+
+	const char *prefix = getenv("PREFIX");
+
+	if (prefix && *prefix) {
+		snprintf(path, sizeof(path), "%s/etc/resolv.conf", prefix);
+		candidates[n++] = path;
+	}
+	candidates[n++] = "/etc/resolv.conf";
+	candidates[n] = NULL;
+
+	for (i = 0; i < n; i++) {
+		char line[512];
+		FILE *f = fopen(candidates[i], "r");
+
+		if (!f)
+			continue;
+		while (fgets(line, sizeof(line), f)) {
+			char *p = line, *end;
+
+			while (*p == ' ' || *p == '\t')
+				p++;
+			if (strncmp(p, "nameserver", 10))
+				continue;
+			p += 10;
+			while (*p == ' ' || *p == '\t')
+				p++;
+			end = p;
+			while (*end && *end != '\n' && *end != '\r' &&
+			       *end != ' ' && *end != '\t')
+				end++;
+			*end = '\0';
+			if (*p) {
+				char *ret = strdup(p);
+
+				fclose(f);
+				return ret;
+			}
+		}
+		fclose(f);
+	}
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
 	const char *passt_path = "./passt";
 	const char *mac = "02:00:00:00:00:01";
 	const char *iface = NULL;	/* passt -i: which host interface to mirror */
-	const char *dns = "1.1.1.1";	/* passt -D: nameserver to announce */
+	const char *dns = NULL;		/* passt -D; NULL means "work it out" */
+	char *dns_alloc = NULL;		/* what dns_from_resolv_conf handed us */
+	bool dns_disabled = false;	/* --dns none */
 	const char *addr = "10.0.2.15";	/* passt -a: address given to the guest */
 	const char *mask = "24";	/* passt -n */
 	const char *gw = "10.0.2.2";	/* passt -g: gateway passt emulates */
@@ -213,8 +284,14 @@ int main(int argc, char **argv)
 			mac = argv[++i];
 		else if (!strcmp(argv[i], "--iface") && i + 1 < argc)
 			iface = argv[++i];
-		else if (!strcmp(argv[i], "--dns") && i + 1 < argc)
-			dns = argv[++i];
+		else if (!strcmp(argv[i], "--dns") && i + 1 < argc) {
+			const char *v = argv[++i];
+
+			if (!strcmp(v, "none"))
+				dns_disabled = true;
+			else
+				dns = v;
+		}
 		else if (!strcmp(argv[i], "--addr") && i + 1 < argc)
 			addr = argv[++i];
 		else if (!strcmp(argv[i], "--mask") && i + 1 < argc)
@@ -230,13 +307,40 @@ int main(int argc, char **argv)
 	}
 	if (i >= argc || strcmp(argv[i], "--")) {
 		fprintf(stderr,
-			"usage: umnet [--passt PATH] [--mac MAC] -- ./linux <args...>\n");
+			"usage: umnet [--passt PATH] [--mac MAC] [--iface IF] "
+			"[--dns ADDR|none] [--addr A] [--mask N] [--gw G] "
+			"[--verbose] -- ./linux <args...>\n");
 		return 2;
 	}
 	umlarg = i + 1;
 	if (umlarg >= argc) {
 		fprintf(stderr, "umnet: no UML command given\n");
 		return 2;
+	}
+
+	/*
+	 * Settle the nameserver before forking.  It must never be left to passt:
+	 * passt reads /etc/resolv.conf, Android has none, and it then gives up
+	 * with "No IPv4 nameserver available for DHCP" so the guest never gets a
+	 * lease.
+	 */
+	if (dns_disabled) {
+		fprintf(stderr, "umnet: announcing no nameserver (--dns none)\n");
+	} else if (dns) {
+		fprintf(stderr, "umnet: announcing nameserver %s (--dns)\n", dns);
+	} else {
+		dns_alloc = dns_from_resolv_conf();
+		if (dns_alloc) {
+			dns = dns_alloc;
+			fprintf(stderr,
+				"umnet: announcing nameserver %s (host resolv.conf)\n",
+				dns);
+		} else {
+			dns = "1.1.1.1";
+			fprintf(stderr,
+				"umnet: announcing nameserver %s "
+				"(fallback: no readable resolv.conf)\n", dns);
+		}
 	}
 
 	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, uml_sp) ||

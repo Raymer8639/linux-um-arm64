@@ -242,8 +242,88 @@ def read_log(path, tail=25):
             "excerpt": {"head": lines[:12], "tail": lines[-tail:]}}
 
 
+# A run leaves at most a couple of umid directories.  More than this in one
+# difference means the snapshot is wrong, not that the run leaked.
+UMID_SANITY_LIMIT = 4
+
+
+def uml_dir_names():
+    """Names of the umid directories under $HOME/.uml.
+
+    Returns None -- not an empty set -- when the directory could not be read.
+    The difference matters: a cleanup that compares before and after must be
+    able to tell "there was nothing there" from "I could not look", because
+    treating the second as the first means everything already present counts as
+    newly created.  That is not hypothetical; it deleted every umid directory on
+    the phone the first time these scenarios ran with this cleanup in place.
+    """
+    try:
+        return set(os.listdir(os.path.join(os.path.expanduser("~"), ".uml")))
+    except OSError:
+        return None
+
+
+def clean_umid_dirs(before):
+    """Remove the umid directories this scenario left behind.
+
+    The gate cleans up after itself, but these scenarios kill things on purpose:
+    a scenario that kills the run's process group takes the gate with it, and the
+    gate never reaches its own cleanup.  So the directories from those runs are
+    removed here, by the same rule the gate uses -- only what appeared during the
+    scenario, and only where the pid file names a process that is gone.
+
+    Refuses in two cases, both of which mean the answer is not trustworthy:
+
+    * `before` is None, so the snapshot could not be taken and every directory
+      on disk would look new.
+    * the difference is implausibly large.  A scenario creates at most a couple
+      of these; more than that is a broken snapshot, not a leak, and deleting on
+      it would take out directories that have been there for weeks.
+
+    Failing closed costs a leftover directory.  Failing open costs data.
+    """
+    if before is None:
+        return None
+
+    uml = os.path.join(os.path.expanduser("~"), ".uml")
+    try:
+        after = set(os.listdir(uml))
+    except OSError:
+        return None
+
+    candidates = sorted(after - before)
+    if len(candidates) > UMID_SANITY_LIMIT:
+        return None
+
+    removed = []
+    for name in candidates:
+        directory = os.path.join(uml, name)
+        alive = True
+        try:
+            with open(os.path.join(directory, "pid"), encoding="ascii") as handle:
+                os.kill(int(handle.read().strip()), 0)
+        except (OSError, ValueError):
+            alive = False
+        if alive:
+            continue
+        for entry in ("mconsole", "pid"):
+            try:
+                os.unlink(os.path.join(directory, entry))
+            except OSError:
+                pass
+        try:
+            os.rmdir(directory)
+            removed.append(name)
+        except OSError:
+            pass
+    return removed
+
+
 def finish_run(scenario, args, attack, criteria, notes, log_path,
                no_false_pass=True):
+    # Anything the run did not get to tidy up after itself, because a scenario
+    # killed it before it could.
+    removed = clean_umid_dirs(getattr(args, "uml_before", None))
     """Common tail: wait for the run, judge survivors, build the record."""
     ended_clean = attack.wait(args.deadline)
     if args.settle > 0:
@@ -313,6 +393,7 @@ def finish_run(scenario, args, attack, criteria, notes, log_path,
 
 def scenario_link_drop(args):
     """Kill passt while the guest is using the link."""
+    args.uml_before = uml_dir_names()
     attack = Attack(gate_argv(args), tuple(args.watch), args.interval).start()
     criteria, notes = [], []
     uml = attack.wait_for("linux-bionic", args.start_timeout)
@@ -369,6 +450,7 @@ def scenario_link_drop(args):
 
 def scenario_kernel_kill(args):
     """Kill the UML process: what an Android low-memory kill looks like."""
+    args.uml_before = uml_dir_names()
     attack = Attack(gate_argv(args), tuple(args.watch), args.interval).start()
     criteria, notes = [], []
     uml = attack.wait_for("linux-bionic", args.start_timeout)
@@ -476,6 +558,7 @@ def scenario_guest_panic(args):
     if args.gate != gu.DEFAULT_GATE:
         # Sample mode: the stand-in gate produces a panic in its log, which
         # exercises the criteria without a device.
+        args.uml_before = uml_dir_names()
         attack = Attack(gate_argv(args), tuple(args.watch), args.interval).start()
         attack.wait(args.gate_timeout + args.slack)
         if args.settle > 0:

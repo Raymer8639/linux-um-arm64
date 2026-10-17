@@ -12,6 +12,7 @@ and contain no `BUG:`, `WARNING:` or kernel panic.
 | Interception | `seccomp=on`, `seccomp=off`, `nosysemu`, `nocancel` |
 | Storage | hostfs directory root, ext4 image, bind mounts, read/write and exit status |
 | Neoproot session | `neoproot_protocol=session-v1`, hostfs session mount, cwd, status and exit code |
+| Neoproot init protocol | protocol 2 and `feature=binds` declared before `init.sh`; `binds` records parsed and mounted in order; a refused bind reports `protocol-error` and 125 without running the command |
 | Console | pty input/output and non-pollable stdin fallback |
 | Memory | 4 KB and 16 KB guest page configurations where supported |
 | Networking | loopback, passt vector fd, DHCP, DNS and TCP; IPv6 link, NDP/ICMPv6, AAAA and IPv6 TCP with the gate's `--ipv6` mode |

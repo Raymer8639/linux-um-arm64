@@ -4,8 +4,8 @@
  * capability at all.
  *
  * The problem: every conventional UML network transport needs privileges the
- * `shell` user on Android does not have. tap and raw need CAP_NET_ADMIN and
- * /dev/net/tun; gre and l2tpv3 need raw sockets. What is left is UML's `fd`
+ * 'shell' user on Android does not have. tap and raw need CAP_NET_ADMIN and
+ * /dev/net/tun; gre and l2tpv3 need raw sockets. What is left is UML's 'fd'
  * transport, which simply reads and writes Ethernet frames on a descriptor
  * somebody else set up -- and a userspace TCP/IP stack on the other end of it,
  * which needs no privileges because it makes ordinary outbound socket calls on
@@ -30,14 +30,43 @@
  * with the guest end of the datagram pair inherited, appending the vector
  * argument that points at it.
  *
+ * IPv6 is served by a second passt, and has to be.
+ *
+ * passt supports both address families in one process, but not over an
+ * inherited socket: its Android 'prepatched' mode -- fd, no namespace, no
+ * netlink -- configures IPv4 locally and then still calls conf_ip6(), which
+ * needs the netlink socket that mode deliberately never opened. Starting one
+ * passt with both families therefore dies with
+ *
+ *	netlink: Failed to send(): Bad file descriptor
+ *
+ * and starting it with --ipv6 only (which is how passt spells 'IPv6, no IPv4')
+ * would take IPv4 away from the guest. So --ipv6 forks a *second*, IPv6-only
+ * passt and the pump routes each guest frame by its EtherType: 0x86dd to the
+ * IPv6 helper, everything else -- IPv4 and ARP -- to the IPv4 helper. The two
+ * helpers are independent point-to-point links that happen to share a wire,
+ * which is exactly what a router with one IPv4 and one IPv6 address is.
+ *
+ * That IPv6 helper does need netlink at start-up, to learn a template
+ * interface's link-local address and prefix. Android denied NETLINK_ROUTE to
+ * app uids when this bridge was written; it allows it on the device this was
+ * measured on. When it is denied the helper exits, umnet says so and the run
+ * continues with IPv4 only -- the guest simply has no IPv6, which is the
+ * honest outcome and is what the gate checks for.
+ *
  * Usage:
  *   umnet [--passt PATH] [--passt-pid-file PATH] [--mac MAC] [--iface IF]
  *         [--dns ADDR|none]
- *         [--addr A] [--mask N] [--gw G] [--verbose] -- ./linux <uml args...>
+ *         [--addr A] [--mask N] [--gw G]
+ *         [--ipv6 [--ipv6-addr A[/P]] [--ipv6-gw G] [--ipv6-dns ADDR|none]]
+ *         [--verbose] -- ./linux <uml args...>
  *
- * --dns defaults to the first nameserver the host's resolv.conf names ($PREFIX
- * first for Termux, then /etc), and only falls back to 1.1.1.1 if neither is
- * readable.  `--dns none` announces no resolver at all.
+ * --dns defaults to the first IPv4 nameserver the host's resolv.conf names
+ * ($PREFIX first for Termux, then /etc), and only falls back to 1.1.1.1 if
+ * neither is readable.  --dns none announces no resolver at all.  --ipv6-dns
+ * does the same for AAAA-capable resolvers; its fallback is the public
+ * 2001:4860:4860::8888, because a v4 resolver cannot be reached by a guest
+ * that has no IPv4 address.
  *
  * The UML side ends up with, appended to its command line:
  *   vec0:transport=fd,fd=<n>,mac=<mac>
@@ -60,8 +89,23 @@
 
 #define MAX_FRAME	65536
 #define PFX		4		/* qemu socket protocol length prefix */
+#define ETH_HLEN	14		/* Ethernet II header */
 
-static pid_t passt_pid;
+/*
+ * One passt and the stream socket this process pumps frames over.  There is
+ * always an IPv4 helper; the IPv6 one exists only with --ipv6.
+ */
+struct helper {
+	const char *name;	/* "IPv4" / "IPv6", for messages */
+	pid_t pid;
+	int fd;			/* our end of the stream to passt */
+	bool alive;
+	bool required;		/* its death ends the run */
+};
+
+static struct helper helpers[2];
+static int nhelpers;
+
 static pid_t uml_pid_global;		/* for the signal handler only */
 static pid_t parent_pid;		/* umnet's own pid, for the PDEATHSIG check */
 static int verbose;			/* --verbose: log every frame both ways */
@@ -72,16 +116,19 @@ static int verbose;			/* --verbose: log every frame both ways */
  * The kernel is our child and would otherwise outlive us: whoever started
  * umnet kills umnet, not the kernel, so a supervisor reaping its child left a
  * booted guest running with a socket nobody was pumping any more.  Kill the
- * kernel's process group as well as passt; the group is what UML's own
+ * kernel's process group as well as every helper; the group is what UML's own
  * children end up in.
  */
 static void reap(int sig)
 {
+	int i;
+
 	(void)sig;
 	if (uml_pid_global > 0)
 		kill(-uml_pid_global, SIGKILL);
-	if (passt_pid > 0)
-		kill(passt_pid, SIGTERM);
+	for (i = 0; i < nhelpers; i++)
+		if (helpers[i].pid > 0 && helpers[i].alive)
+			kill(helpers[i].pid, SIGTERM);
 	_exit(0);
 }
 
@@ -123,75 +170,174 @@ static int write_full(int fd, const void *buf, size_t n)
 }
 
 /*
+ * A helper that is allowed to disappear must not be waited for forever, and
+ * its frames must not be written to a descriptor nobody reads.  Reap it now,
+ * say what happened, and take it out of the poll set.
+ */
+static void helper_gone(struct helper *h, const char *why)
+{
+	if (!h->alive)
+		return;
+	h->alive = false;
+
+	if (verbose)
+		fprintf(stderr, "umnet: %s helper gone: %s\n", h->name, why);
+
+	if (h->pid > 0) {
+		int reaped;
+
+		kill(h->pid, SIGTERM);
+		reaped = waitpid(h->pid, NULL, WNOHANG);
+		/* Still alive is fine: teardown reaps it once it is gone. */
+		if (reaped == h->pid || reaped < 0)
+			h->pid = 0;
+	}
+	if (h->fd >= 0) {
+		close(h->fd);
+		h->fd = -1;
+	}
+
+	if (!h->required)
+		fprintf(stderr,
+			"umnet: ipv6 helper exited; continuing without IPv6\n");
+}
+
+/*
  * Move whatever is ready in one poll round.
  *
- * Returns 0 to keep pumping, -1 when the link is finished: either side closed,
- * or a write failed in a way that means the peer is gone.
+ * Returns 0 to keep pumping, -1 when the link is finished: the IPv4 helper
+ * closed, or a frame could not be delivered to the guest.  An IPv6 helper
+ * going away is not the end of the run -- IPv4 keeps working, and a caller
+ * that asked for IPv6 learns about it from the message helper_gone() prints.
  */
-static int pump_once(int uml_fd, int passt_fd, int timeout_ms)
+static int pump_once(int uml_fd, int timeout_ms)
 {
 	static unsigned char frame[PFX + MAX_FRAME];
-	struct pollfd pfd[2];
-	int ready;
+	struct helper *map[2];
+	struct pollfd pfd[3];
+	int np = 0, i, ready;
+	bool link_dead = false;
 
-	pfd[0].fd = uml_fd;
-	pfd[1].fd = passt_fd;
-	pfd[0].events = pfd[1].events = POLLIN;
+	pfd[np].fd = uml_fd;
+	pfd[np].events = POLLIN;
+	pfd[np].revents = 0;
+	np++;
 
-	ready = poll(pfd, 2, timeout_ms);
+	for (i = 0; i < nhelpers; i++) {
+		if (!helpers[i].alive)
+			continue;
+		pfd[np].fd = helpers[i].fd;
+		pfd[np].events = POLLIN;
+		pfd[np].revents = 0;
+		map[np - 1] = &helpers[i];
+		np++;
+	}
+
+	ready = poll(pfd, np, timeout_ms);
 	if (ready < 0)
 		return errno == EINTR ? 0 : -1;
 	if (ready == 0)
 		return 0;
 
-	/* guest -> host: datagram in, length-prefixed out */
+	/* guest -> host: datagram in, length-prefixed out to the right helper */
 	if (pfd[0].revents & POLLIN) {
 		ssize_t n = recv(uml_fd, frame + PFX, MAX_FRAME, 0);
 
 		if (n <= 0 && !(n < 0 && errno == EINTR))
 			return -1;
 		if (n > 0) {
+			struct helper *h = &helpers[0];
 			uint32_t len = htonl((uint32_t)n);
 
-			memcpy(frame, &len, PFX);
+			/*
+			 * EtherType is at offset 12 of an Ethernet II frame.
+			 * A runt frame cannot be classified, so it goes to
+			 * IPv4, which drops it exactly as the wire would.
+			 */
+			if (n >= ETH_HLEN && frame[PFX + 12] == 0x86 &&
+			    frame[PFX + 13] == 0xdd) {
+				if (nhelpers > 1 && helpers[1].alive)
+					h = &helpers[1];
+				else
+					h = NULL;	/* no IPv6 stack: drop */
+			}
+
 			if (verbose)
-				fprintf(stderr, "umnet: guest->host %zd\n", n);
-			if (write_full(passt_fd, frame, PFX + n))
-				return -1;
+				fprintf(stderr, "umnet: guest->host %zd -> %s\n",
+					n, h ? h->name : "none");
+			if (h) {
+				memcpy(frame, &len, PFX);
+				if (write_full(h->fd, frame, PFX + n)) {
+					if (h->required)
+						return -1;
+					helper_gone(h, "write failed");
+				}
+			}
 		}
 	}
 
 	/* host -> guest: length-prefixed in, datagram out */
-	if (pfd[1].revents & POLLIN) {
+	for (i = 1; i < np; i++) {
+		struct helper *h = map[i - 1];
 		uint32_t len;
-		int r = read_full(passt_fd, &len, PFX);
+		int r;
 
-		if (r <= 0)
-			return -1;
-		len = ntohl(len);
-		if (len == 0 || len > MAX_FRAME) {
-			fprintf(stderr, "umnet: bad frame length %u\n", len);
-			return -1;
+		if (!h->alive)
+			continue;
+
+		if (pfd[i].revents & POLLIN) {
+			r = read_full(h->fd, &len, PFX);
+			if (r <= 0) {
+				if (h->required) {
+					/*
+					 * Do not return yet: frames already
+					 * delivered by the other helper are
+					 * still worth handing to the guest.
+					 */
+					link_dead = true;
+					continue;
+				}
+				helper_gone(h, "closed");
+				continue;
+			}
+			len = ntohl(len);
+			if (len == 0 || len > MAX_FRAME) {
+				fprintf(stderr, "umnet: bad frame length %u\n",
+					len);
+				return -1;
+			}
+			if (read_full(h->fd, frame + PFX, len) <= 0) {
+				if (h->required) {
+					link_dead = true;
+					continue;
+				}
+				helper_gone(h, "closed mid-frame");
+				continue;
+			}
+			if (verbose)
+				fprintf(stderr, "umnet: host->guest %u\n", len);
+			/*
+			 * A datagram socket has no partial writes, and a frame
+			 * dropped here is exactly what a dropped packet is on
+			 * real hardware -- so failure is not fatal, the guest's
+			 * TCP will retransmit.
+			 */
+			if (send(uml_fd, frame + PFX, len, MSG_DONTWAIT) < 0 &&
+			    errno != EAGAIN && errno != EWOULDBLOCK &&
+			    errno != EINTR)
+				return -1;
 		}
-		if (read_full(passt_fd, frame, len) <= 0)
-			return -1;
-		if (verbose)
-			fprintf(stderr, "umnet: host->guest %u\n", len);
-		/*
-		 * A datagram socket has no partial writes, and a frame
-		 * dropped here is exactly what a dropped packet is on
-		 * real hardware -- so failure is not fatal, the guest's
-		 * TCP will retransmit.
-		 */
-		if (send(uml_fd, frame, len, MSG_DONTWAIT) < 0 &&
-		    errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-			return -1;
+
+		if (h->alive && (pfd[i].revents & (POLLERR | POLLHUP))) {
+			if (h->required) {
+				link_dead = true;
+				continue;
+			}
+			helper_gone(h, "hung up");
+		}
 	}
 
-	if ((pfd[0].revents | pfd[1].revents) & (POLLERR | POLLHUP))
-		return -1;
-
-	return 0;
+	return link_dead ? -1 : 0;
 }
 
 /*
@@ -207,9 +353,10 @@ static int pump_once(int uml_fd, int passt_fd, int timeout_ms)
  * under $PREFIX, and every ordinary Linux host has the other path.  Try both
  * and fall back to the old literal only if neither is readable.
  *
- * Returns a malloc'd string, or NULL when nothing was found.
+ * want_v6 selects the family: an IPv4 address cannot serve a guest that only
+ * has IPv6, and vice versa.  Returns a malloc'd string, or NULL.
  */
-static char *dns_from_resolv_conf(void)
+static char *dns_from_resolv_conf(bool want_v6)
 {
 	char path[PATH_MAX];
 	const char *candidates[3];
@@ -245,7 +392,11 @@ static char *dns_from_resolv_conf(void)
 			       *end != ' ' && *end != '\t')
 				end++;
 			*end = '\0';
-			if (*p) {
+			if (!*p)
+				continue;
+			if ((strchr(p, ':') != NULL) != want_v6)
+				continue;
+			{
 				char *ret = strdup(p);
 
 				fclose(f);
@@ -255,6 +406,75 @@ static char *dns_from_resolv_conf(void)
 		fclose(f);
 	}
 	return NULL;
+}
+
+/*
+ * exec passt with the common options and the caller's stack-specific ones.
+ * The -F descriptor is this process's end of the stream socket; the caller
+ * closes every other descriptor before calling this.
+ */
+static void exec_passt(const char *path, int fd, const char *const *extra)
+{
+	char fdbuf[16];
+	char *argv[48];
+	int n = 0, i;
+
+	snprintf(fdbuf, sizeof(fdbuf), "%d", fd);
+
+	argv[n++] = "passt";
+	/*
+	 * -f  stay in the foreground, so this process is the child we can
+	 *     signal and wait on rather than a daemon that outlives the guest
+	 *     and holds the socket.
+	 * -t/-u none  no inbound port forwarding: the guest gets outbound
+	 *     connectivity, and nothing on the phone's network can reach into
+	 *     it.
+	 */
+	argv[n++] = "-f";
+	argv[n++] = "-F"; argv[n++] = fdbuf;
+	argv[n++] = "-t"; argv[n++] = "none";
+	argv[n++] = "-u"; argv[n++] = "none";
+	for (i = 0; extra[i]; i++) {
+		if (n >= (int)(sizeof(argv) / sizeof(argv[0])) - 1)
+			break;
+		argv[n++] = (char *)extra[i];
+	}
+	argv[n] = NULL;
+
+	execv(path, argv);
+	perror("umnet: exec passt");
+	_exit(127);
+}
+
+/* Fork one helper and record it; the child closes the descriptors it must not
+ * hold, so the parent's other helpers never keep a dead peer's stream open. */
+static pid_t spawn_helper(const char *path, const char *name, int child_fd,
+			  int parent_fd, const int *close_fds, int n_close,
+			  const char *const *extra, bool required)
+{
+	pid_t pid = fork();
+
+	if (pid < 0) {
+		perror("umnet: fork");
+		return -1;
+	}
+	if (pid == 0) {
+		int i;
+
+		for (i = 0; i < n_close; i++)
+			close(close_fds[i]);
+		exec_passt(path, child_fd, extra);
+		_exit(127);
+	}
+
+	close(child_fd);
+	helpers[nhelpers].name = name;
+	helpers[nhelpers].pid = pid;
+	helpers[nhelpers].fd = parent_fd;
+	helpers[nhelpers].alive = true;
+	helpers[nhelpers].required = required;
+	nhelpers++;
+	return pid;
 }
 
 int main(int argc, char **argv)
@@ -267,7 +487,8 @@ int main(int argc, char **argv)
 	 * waitpid while the helper served DHCP and TCP.)  So anything that has to
 	 * signal the helper -- a fault-injection scenario dropping the link, a
 	 * supervisor reaping it -- has to be told the pid by the process that
-	 * forked it.
+	 * forked it.  With --ipv6 this names the IPv4 helper, the one whose loss
+	 * ends the run.
 	 */
 	const char *passt_pid_file = NULL;
 	const char *mac = "02:00:00:00:00:01";
@@ -278,13 +499,25 @@ int main(int argc, char **argv)
 	const char *addr = "10.0.2.15";	/* passt -a: address given to the guest */
 	const char *mask = "24";	/* passt -n */
 	const char *gw = "10.0.2.2";	/* passt -g: gateway passt emulates */
-	int uml_sp[2], passt_sp[2], i, umlarg;
+	bool ipv6 = false;		/* --ipv6: second, IPv6-only helper */
+	const char *ipv6_addr = "fd00::2/64";	/* passt -a for the v6 helper */
+	const char *ipv6_gw = "fe80::1";	/* its gateway */
+	const char *ipv6_dns = NULL;	/* its -D; NULL means "work it out" */
+	char *ipv6_dns_alloc = NULL;
+	bool ipv6_dns_disabled = false;
+	const char *v4_extra[24];
+	const char *v6_extra[16];
+	int uml_sp[2], v4_sp[2], v6_sp[2];
+	int n4 = 0, n6 = 0;
+	int close_child[8];
+	int umlarg, i;
 	int status, rc = 0;
 	int kernel_status;
 	bool kernel_reaped;
 	char vecarg[128];
 	char **child;
 	pid_t uml_pid;
+	pid_t pid;
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--verbose"))
@@ -311,6 +544,25 @@ int main(int argc, char **argv)
 			mask = argv[++i];
 		else if (!strcmp(argv[i], "--gw") && i + 1 < argc)
 			gw = argv[++i];
+		else if (!strcmp(argv[i], "--ipv6"))
+			ipv6 = true;
+		else if (!strcmp(argv[i], "--ipv6-addr") && i + 1 < argc) {
+			ipv6_addr = argv[++i];
+			ipv6 = true;
+		}
+		else if (!strcmp(argv[i], "--ipv6-gw") && i + 1 < argc) {
+			ipv6_gw = argv[++i];
+			ipv6 = true;
+		}
+		else if (!strcmp(argv[i], "--ipv6-dns") && i + 1 < argc) {
+			const char *v = argv[++i];
+
+			if (!strcmp(v, "none"))
+				ipv6_dns_disabled = true;
+			else
+				ipv6_dns = v;
+			ipv6 = true;
+		}
 		else if (!strcmp(argv[i], "--"))
 			break;
 		else {
@@ -322,8 +574,8 @@ int main(int argc, char **argv)
 		fprintf(stderr,
 			"usage: umnet [--passt PATH] [--mac MAC] [--iface IF] "
 			"[--passt-pid-file P] [--dns ADDR|none] [--addr A] [--mask N] "
-			"[--gw G] "
-			"[--verbose] -- ./linux <args...>\n");
+			"[--gw G] [--ipv6 [--ipv6-addr A[/P]] [--ipv6-gw G] "
+			"[--ipv6-dns ADDR|none]] [--verbose] -- ./linux <args...>\n");
 		return 2;
 	}
 	umlarg = i + 1;
@@ -343,7 +595,7 @@ int main(int argc, char **argv)
 	} else if (dns) {
 		fprintf(stderr, "umnet: announcing nameserver %s (--dns)\n", dns);
 	} else {
-		dns_alloc = dns_from_resolv_conf();
+		dns_alloc = dns_from_resolv_conf(false);
 		if (dns_alloc) {
 			dns = dns_alloc;
 			fprintf(stderr,
@@ -357,8 +609,31 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (ipv6) {
+		if (ipv6_dns_disabled) {
+			fprintf(stderr,
+				"umnet: announcing no IPv6 nameserver (--ipv6-dns none)\n");
+		} else if (ipv6_dns) {
+			fprintf(stderr, "umnet: announcing IPv6 nameserver %s "
+				"(--ipv6-dns)\n", ipv6_dns);
+		} else {
+			ipv6_dns_alloc = dns_from_resolv_conf(true);
+			if (ipv6_dns_alloc) {
+				ipv6_dns = ipv6_dns_alloc;
+				fprintf(stderr, "umnet: announcing IPv6 nameserver "
+					"%s (host resolv.conf)\n", ipv6_dns);
+			} else {
+				ipv6_dns = "2001:4860:4860::8888";
+				fprintf(stderr, "umnet: announcing IPv6 nameserver "
+					"%s (fallback: no IPv6 nameserver in "
+					"resolv.conf)\n", ipv6_dns);
+			}
+		}
+	}
+
 	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, uml_sp) ||
-	    socketpair(AF_UNIX, SOCK_STREAM, 0, passt_sp)) {
+	    socketpair(AF_UNIX, SOCK_STREAM, 0, v4_sp) ||
+	    (ipv6 && socketpair(AF_UNIX, SOCK_STREAM, 0, v6_sp))) {
 		perror("umnet: socketpair");
 		return 1;
 	}
@@ -371,91 +646,124 @@ int main(int argc, char **argv)
 	 */
 	{
 		int sz = 1 << 20;
+		int pairs[3][2] = { { uml_sp[0], uml_sp[1] },
+				    { v4_sp[0], v4_sp[1] },
+				    { -1, -1 } };
+		int np = 2, k;
 
-		setsockopt(uml_sp[0], SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz));
-		setsockopt(uml_sp[0], SOL_SOCKET, SO_SNDBUF, &sz, sizeof(sz));
-		setsockopt(uml_sp[1], SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz));
-		setsockopt(uml_sp[1], SOL_SOCKET, SO_SNDBUF, &sz, sizeof(sz));
+		if (ipv6) {
+			pairs[2][0] = v6_sp[0];
+			pairs[2][1] = v6_sp[1];
+			np = 3;
+		}
+		for (k = 0; k < np; k++) {
+			setsockopt(pairs[k][0], SOL_SOCKET, SO_RCVBUF,
+				   &sz, sizeof(sz));
+			setsockopt(pairs[k][0], SOL_SOCKET, SO_SNDBUF,
+				   &sz, sizeof(sz));
+			setsockopt(pairs[k][1], SOL_SOCKET, SO_RCVBUF,
+				   &sz, sizeof(sz));
+			setsockopt(pairs[k][1], SOL_SOCKET, SO_SNDBUF,
+				   &sz, sizeof(sz));
+		}
 	}
 
+	/*
+	 * A helper that has gone away must not take the bridge with it through
+	 * SIGPIPE on the next write; write_full() then reports EPIPE and the
+	 * helper is handled like any other closed peer.
+	 */
+	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, reap);
 	signal(SIGTERM, reap);
 
 	parent_pid = getpid();
 
-	passt_pid = fork();
-	if (passt_pid < 0) {
-		perror("umnet: fork");
-		return 1;
-	}
-	if (passt_pid == 0) {
-		char fdbuf[16];
+	/*
+	 * Configure passt with the whole network rather than letting it
+	 * discover one. It normally reads the host's addresses, routes and
+	 * /etc/resolv.conf, and on Android all three are unavailable to an
+	 * ordinary uid: netlink link enumeration may be denied outright (passt
+	 * reports "Invalid interface name wlan0: Permission denied"), the
+	 * routing table is per-uid so several default routes are visible, and
+	 * there is no resolv.conf at all.
+	 *
+	 * Configured explicitly, passt needs none of that for IPv4. It still
+	 * reaches the network the only way an unprivileged process can, by
+	 * opening ordinary sockets, which is exactly what makes this work
+	 * without root.
+	 */
+	v4_extra[n4++] = "-4";
+	v4_extra[n4++] = "-a"; v4_extra[n4++] = addr;
+	v4_extra[n4++] = "-n"; v4_extra[n4++] = mask;
+	v4_extra[n4++] = "-g"; v4_extra[n4++] = gw;
+	if (dns) { v4_extra[n4++] = "-D"; v4_extra[n4++] = dns; }
+	if (iface) { v4_extra[n4++] = "-i"; v4_extra[n4++] = iface; }
+	v4_extra[n4] = NULL;
 
-		close(uml_sp[0]);
-		close(uml_sp[1]);
-		close(passt_sp[1]);
-		snprintf(fdbuf, sizeof(fdbuf), "%d", passt_sp[0]);
-		/*
-		 * -f  stay in the foreground, so this process is the child we
-		 *     can signal and wait on rather than a daemon that outlives
-		 *     the guest and holds the socket.
-		 * -t/-u none  no inbound port forwarding: the guest gets
-		 *     outbound connectivity, and nothing on the phone's network
-		 *     can reach into it.
-		 */
-		{
-			/*
-			 * -i is not optional on Android in practice: the
-			 * routing table is per-uid, so passt sees several
-			 * default routes and reports "Multiple default IPv4
-			 * routes, picked first" before falling back to a local
-			 * mode with no external connectivity.
-			 *
-			 * -D likewise: passt learns nameservers from
-			 * /etc/resolv.conf, which Android does not have (DNS
-			 * goes through netd), so without it passt gives up with
-			 * "No IPv4 nameserver available for DHCP" and the guest
-			 * gets no lease.
-			 */
-			const char *av[32];
-			int n = 0;
-
-			av[n++] = "passt";
-			av[n++] = "-f";
-			av[n++] = "-F"; av[n++] = fdbuf;
-			av[n++] = "-t"; av[n++] = "none";
-			av[n++] = "-u"; av[n++] = "none";
-			/*
-			 * Give passt the whole network configuration rather than
-			 * letting it discover one. It normally reads the host's
-			 * addresses, routes and /etc/resolv.conf, and on Android
-			 * all three are unavailable to an ordinary uid: netlink
-			 * link enumeration is denied outright (passt reports
-			 * "Invalid interface name wlan0: Permission denied"),
-			 * the routing table is per-uid so several default routes
-			 * are visible, and there is no resolv.conf at all.
-			 *
-			 * Configured explicitly, passt needs none of that. It
-			 * still reaches the network the only way an unprivileged
-			 * process can, by opening ordinary sockets, which is
-			 * exactly what makes this work without root.
-			 */
-			av[n++] = "-4";
-			av[n++] = "-a"; av[n++] = addr;
-			av[n++] = "-n"; av[n++] = mask;
-			av[n++] = "-g"; av[n++] = gw;
-			if (dns) { av[n++] = "-D"; av[n++] = dns; }
-			if (iface) { av[n++] = "-i"; av[n++] = iface; }
-			av[n] = NULL;
-			execv(passt_path, (char *const *)av);
+	/*
+	 * The IPv6 helper is IPv6-only: -6 is passt's way of saying "no IPv4",
+	 * and it also selects the path that keeps netlink available, which the
+	 * IPv6 configuration needs.  The comment above explains why this is a
+	 * second process rather than one dual-stack passt.
+	 */
+	if (ipv6) {
+		v6_extra[n6++] = "-6";
+		v6_extra[n6++] = "-a"; v6_extra[n6++] = ipv6_addr;
+		v6_extra[n6++] = "-g"; v6_extra[n6++] = ipv6_gw;
+		if (ipv6_dns) {
+			v6_extra[n6++] = "-D"; v6_extra[n6++] = ipv6_dns;
 		}
-		perror("umnet: exec passt");
-		_exit(127);
+		if (iface) { v6_extra[n6++] = "-i"; v6_extra[n6++] = iface; }
+		v6_extra[n6] = NULL;
+	}
+
+	/* The IPv4 helper: the child closes the guest end of the pair too. */
+	close_child[0] = uml_sp[0];
+	close_child[1] = uml_sp[1];
+	close_child[2] = v4_sp[1];
+	close_child[3] = ipv6 ? v6_sp[0] : -1;
+	close_child[4] = ipv6 ? v6_sp[1] : -1;
+	pid = spawn_helper(passt_path, "IPv4", v4_sp[0], v4_sp[1],
+			   close_child, ipv6 ? 5 : 3, v4_extra, true);
+	if (pid < 0)
+		return 1;
+
+	if (ipv6) {
+		close_child[0] = uml_sp[0];
+		close_child[1] = uml_sp[1];
+		close_child[2] = v4_sp[1];
+		close_child[3] = v6_sp[1];
+		pid = spawn_helper(passt_path, "IPv6", v6_sp[0], v6_sp[1],
+				   close_child, 4, v6_extra, false);
+		if (pid < 0) {
+			/* IPv4 still works; the guest just gets no IPv6. */
+			fprintf(stderr, "umnet: cannot start the IPv6 helper\n");
+		} else {
+			/*
+			 * passt parses its configuration and (for IPv6) talks to
+			 * netlink before it reaches its event loop, so a failure
+			 * happens in milliseconds.  Give it that moment, then
+			 * decide whether this run has IPv6 at all.
+			 */
+			usleep(200000);
+			if (waitpid(pid, &status, WNOHANG) == pid) {
+				helpers[1].pid = 0;
+				helpers[1].alive = false;
+				close(helpers[1].fd);
+				helpers[1].fd = -1;
+				fprintf(stderr,
+					"umnet: ipv6 helper exited (%d); continuing without IPv6\n",
+					WIFEXITED(status) ?
+					WEXITSTATUS(status) : -1);
+			}
+		}
 	}
 
 	if (passt_pid_file) {
 		char pidbuf[16];
-		int n = snprintf(pidbuf, sizeof(pidbuf), "%d\n", (int)passt_pid);
+		int n = snprintf(pidbuf, sizeof(pidbuf), "%d\n",
+				 (int)helpers[0].pid);
 		int fd = open(passt_pid_file,
 			      O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
 
@@ -472,8 +780,6 @@ int main(int argc, char **argv)
 			close(fd);
 	}
 
-	close(passt_sp[0]);
-
 	uml_pid = fork();
 	uml_pid_global = uml_pid;
 	if (uml_pid < 0) {
@@ -482,7 +788,15 @@ int main(int argc, char **argv)
 	}
 	if (uml_pid == 0) {
 		close(uml_sp[1]);
-		close(passt_sp[1]);
+		/*
+		 * The kernel must not hold the helpers' stream ends: a passt that
+		 * exits would then never look closed to the pump, because this
+		 * process still holds a copy of the descriptor.  (The kernel
+		 * inherits the fds across exec otherwise.)
+		 */
+		for (i = 0; i < nhelpers; i++)
+			if (helpers[i].fd >= 0)
+				close(helpers[i].fd);
 		/*
 		 * Die with our parent.  A supervisor that reaps umnet with
 		 * SIGKILL cannot be helped by the signal handler above -- the
@@ -541,12 +855,12 @@ int main(int argc, char **argv)
 		}
 		if (done < 0 && errno != EINTR)
 			break;
-		if (pump_once(uml_sp[1], passt_sp[1], 200) < 0)
+		if (pump_once(uml_sp[1], 200) < 0)
 			break;
 	}
 
 	/*
-	 * The guest is gone or the link broke; take passt with it.
+	 * The guest is gone or the link broke; take the helpers with it.
 	 *
 	 * Report how the kernel died. This was WNOHANG with a discarded status
 	 * and an unconditional "return 0", which made every possible failure --
@@ -556,7 +870,10 @@ int main(int argc, char **argv)
 	 * is no shell to ask, that is the difference between a diagnosis and a
 	 * guess.
 	 */
-	kill(passt_pid, SIGTERM);
+	for (i = 0; i < nhelpers; i++) {
+		if (helpers[i].pid > 0 && helpers[i].alive)
+			kill(helpers[i].pid, SIGTERM);
+	}
 
 	if (!kernel_reaped && waitpid(uml_pid, &kernel_status, 0) < 0) {
 		perror("umnet: waitpid");
@@ -572,13 +889,32 @@ int main(int argc, char **argv)
 			fprintf(stderr, "umnet: kernel exited %d\n", rc);
 	}
 
-	if (waitpid(passt_pid, &status, 0) > 0) {
-		if (WIFSIGNALED(status))
-			fprintf(stderr, "umnet: passt killed by signal %d (%s)\n",
-				WTERMSIG(status), strsignal(WTERMSIG(status)));
-		else if (WIFEXITED(status) && WEXITSTATUS(status))
-			fprintf(stderr, "umnet: passt exited %d\n",
+	for (i = 0; i < nhelpers; i++) {
+		if (helpers[i].pid <= 0)
+			continue;
+		if (waitpid(helpers[i].pid, &status, 0) <= 0)
+			continue;
+		if (!WIFSIGNALED(status) && !WIFEXITED(status))
+			continue;
+		if (helpers[i].required) {
+			/* Keep the wording the gates and evidence grep for. */
+			if (WIFSIGNALED(status))
+				fprintf(stderr,
+					"umnet: passt killed by signal %d (%s)\n",
+					WTERMSIG(status),
+					strsignal(WTERMSIG(status)));
+			else if (WEXITSTATUS(status))
+				fprintf(stderr, "umnet: passt exited %d\n",
+					WEXITSTATUS(status));
+		} else if (WIFSIGNALED(status)) {
+			if (verbose)
+				fprintf(stderr,
+					"umnet: ipv6 passt killed by signal %d\n",
+					WTERMSIG(status));
+		} else if (WEXITSTATUS(status) && verbose) {
+			fprintf(stderr, "umnet: ipv6 passt exited %d\n",
 				WEXITSTATUS(status));
+		}
 	}
 
 	return rc;

@@ -212,3 +212,13 @@ an environment that could not run the test:
 Recording `skip` as `pass` would make the release claim coverage it never had,
 which is worse than admitting the gap. The harness prints `verdict=SKIP` and
 exits 77 in that case.
+
+The `make` command accepts `pass`, `fail`, `skip` and `optional` (plus the
+legacy `required`). `check` enforces the distinction: a release that records
+`ext4-gate=fail` is refused, and a release that records `ext4-gate=pass` must
+also record `asset.linux-bionic.gate=pass`. A manifest cannot claim the gate
+passed while the asset it describes says the gate never ran.
+
+`check --tag` restores the executable bit on downloaded assets before checking
+them: GitHub serves asset bytes without file modes, so without that step no
+published release could ever verify.

@@ -210,7 +210,7 @@ def remove_new_uml_dirs(before):
 def run_gate(args):
     umnet = os.path.join(args.workdir, "umnet")
     passt = os.path.join(args.workdir, "passt-bionic")
-    netroot = os.path.join(args.workdir, "netroot")
+    netroot = args.netroot or os.path.join(args.workdir, "netroot")
     kernel = os.path.join(PREFIX, "tmp/um-arm64/new/linux-bionic")
     stub = os.path.join(PREFIX, "tmp/um-arm64/new/stub_exe")
 
@@ -220,7 +220,8 @@ def run_gate(args):
     if not os.path.isdir(netroot):
         skip("missing hostfs root: " + netroot)
 
-    write_guest_command(netroot)
+    if not args.keep_guest_command:
+        write_guest_command(netroot)
     log_path = os.path.join(args.workdir, args.log)
     cmd = [umnet, "--passt", passt]
     if args.passt_pid_file:
@@ -295,6 +296,11 @@ def main():
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--check-host-only", action="store_true",
                         help="verify the host is untraced and assets exist")
+    parser.add_argument("--netroot", default=None,
+                        help="hostfs root to boot instead of <workdir>/netroot, "
+                             "for a caller that prepared its own guest command")
+    parser.add_argument("--keep-guest-command", action="store_true",
+                        help="do not rewrite net-command.sh in the hostfs root")
     parser.add_argument("--passt-pid-file", default=None,
                         help="ask the bridge to write the helper's pid here, "
                              "so a caller can signal it")

@@ -607,20 +607,24 @@ def scenario_guest_panic(args):
             time.sleep(args.settle)
     else:
         root = prepare_panic_root(args)
-        cmd = gu.build_bridge_command(
-            args.workdir, args.assets_dir, dns=args.dns, netroot=root,
-            extra=list(args.extra_arg))
-        # The bridge writes the guest console to its stdout/stderr; capture it
-        # into the same file the other scenarios read.
-        attack = Attack(cmd, tuple(args.watch), args.interval)
-        attack._sink = []
-        attack.start()
+        # Go through the gate rather than starting the bridge here.  The gate
+        # allocates a pty for UML, and that is not optional: with
+        # `con0=fd:0,fd:1` on a plain pipe the kernel dies before userspace and
+        # prints nothing at all, which is exactly what this scenario recorded
+        # for its whole life -- no kernel output, a SIGABRT, and a
+        # "trigger took effect" criterion that could never have been right.
+        #
+        # The gate is a normal program, so running *it* on a pipe is fine; it
+        # is the kernel underneath that needs the terminal.
+        # An absolute --log, because the gate joins it onto its workdir and
+        # the panic log lives in the faults directory, not there.
+        argv = gate_argv(args) + ["--netroot", root, "--keep-guest-command",
+                                  "--log", log_path]
+        args.uml_before = uml_dir_names()
+        attack = Attack(argv, tuple(args.watch), args.interval).start()
         attack.wait(args.deadline)
         if args.settle > 0:
             time.sleep(args.settle)
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, "w", encoding="utf-8") as handle:
-            handle.write(attack.text())
 
     log = read_log(log_path)
     criteria.append(criterion(

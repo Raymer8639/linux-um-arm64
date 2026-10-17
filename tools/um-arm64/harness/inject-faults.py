@@ -130,11 +130,24 @@ class Attack(object):
         return self.proc is not None and self.proc.poll() is None
 
     def find(self, token):
-        """Processes carrying `token` inside this run's own process tree."""
+        """The processes **named** `token` inside this run's own process tree.
+
+        Matched on the executable name, never on the whole command line.  A
+        substring match is too loose here twice over.  "passt-bionic" appears in
+        umnet's arguments (`umnet --passt .../passt-bionic`), so the link-drop
+        scenario killed the bridge and then recorded, in its evidence, that it
+        had killed passt.  And the watcher's own tooling has the token in its
+        command line, so a fuzzy match turns the observer into an observed.
+        """
         table = gu.proc_table()
         mine = {proc.pid for proc in gu.descendants(table, self.proc.pid)}
-        return gu.matching(table, (token,), pids=mine,
+        hits = gu.matching(table, (token,), pids=mine,
                            exclude=gu.self_tree_pids(table))
+        return [
+            proc for proc in hits
+            if proc.comm == token
+            or os.path.basename(proc.argv[0] if proc.argv else "") == token
+        ]
 
     def wait_for(self, token, timeout):
         deadline = time.monotonic() + timeout
@@ -182,6 +195,26 @@ class Attack(object):
         return [proc.as_dict() for proc in
                 gu.matching(table, self.tokens,
                             exclude=gu.self_tree_pids(table))]
+
+
+def settle(attack, delay):
+    """Give the guest `delay` seconds to get going, but never past the run.
+
+    Returns False if the run ended first, which is a real answer: the injection
+    point was not reached, and the caller says that instead of blaming a
+    process that had simply finished.
+
+    A fixed sleep measured from the start of the run cannot work: a gate run on
+    this hardware is over in about five seconds, so the original 20s default was
+    a delay measured from *after* the run, and every scenario reported that its
+    target "was already gone" while nothing had been injected at all.
+    """
+    deadline = time.monotonic() + delay
+    while time.monotonic() < deadline:
+        if not attack.alive():
+            return False
+        time.sleep(0.1)
+    return attack.alive()
 
 
 def gate_argv(args):
@@ -293,9 +326,8 @@ def scenario_link_drop(args):
             "no UML process appeared within %ss (run alive=%s)"
             % (args.start_timeout, attack.alive())))
     else:
-        time.sleep(args.delay)
-        passt = attack.find("passt-bionic")
-        if passt and attack.alive():
+        passt = attack.wait_for("passt-bionic", args.start_timeout)
+        if passt and settle(attack, args.delay):
             injection.update({"injected": True, "pid": passt[0].pid,
                               "at-seconds": round(attack.seconds, 1),
                               "cmdline": passt[0].cmdline})
@@ -312,8 +344,9 @@ def scenario_link_drop(args):
                 "c1-injected-live",
                 "the fault was injected while the run was live",
                 False,
-                "no passt-bionic process in the run's tree after %ss "
-                "(run alive=%s)" % (args.delay, attack.alive())))
+                "no passt-bionic process in the run's tree while the run "
+                "was alive (run alive=%s, waited %ss)" 
+                % (attack.alive(), args.delay)))
     args.injection = injection
     record = finish_run("link-drop", args, attack, criteria, notes,
                         os.path.join(args.workdir, args.log_name))
@@ -350,9 +383,8 @@ def scenario_kernel_kill(args):
             "no UML process appeared within %ss (run alive=%s)"
             % (args.start_timeout, attack.alive())))
     else:
-        time.sleep(args.delay)
-        live = attack.find("linux-bionic")
-        if live and attack.alive():
+        live = attack.wait_for("linux-bionic", args.start_timeout)
+        if live and settle(attack, args.delay):
             injection.update({"injected": True, "pid": live[0].pid,
                               "at-seconds": round(attack.seconds, 1),
                               "cmdline": live[0].cmdline})
@@ -367,7 +399,10 @@ def scenario_kernel_kill(args):
             criteria.append(criterion(
                 "c1-injected-live",
                 "the UML process was killed while the run was live",
-                False, "the UML process was already gone"))
+                False,
+                "the run ended before the injection could land "
+                "(run alive=%s, waited %ss); a gate run here lasts about 5s"
+                % (attack.alive(), args.delay)))
     args.injection = injection
     record = finish_run("kernel-kill", args, attack, criteria, notes,
                         os.path.join(args.workdir, args.log_name))
@@ -794,7 +829,7 @@ def build_parser():
     parser.add_argument("--interval", type=float, default=0.3)
     parser.add_argument("--start-timeout", type=float, default=120,
                         help="seconds to wait for the UML process to appear")
-    parser.add_argument("--delay", type=float, default=20,
+    parser.add_argument("--delay", type=float, default=1.0,
                         help="seconds between the UML process appearing and "
                              "the fault being injected")
     parser.add_argument("--deadline", type=float, default=90,

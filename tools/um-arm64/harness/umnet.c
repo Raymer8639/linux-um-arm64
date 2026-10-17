@@ -30,29 +30,20 @@
  * with the guest end of the datagram pair inherited, appending the vector
  * argument that points at it.
  *
- * IPv6 is served by a second passt, and has to be.
+ * IPv6 is served by a second passt.
  *
- * passt supports both address families in one process, but not over an
- * inherited socket: its Android 'prepatched' mode -- fd, no namespace, no
- * netlink -- configures IPv4 locally and then still calls conf_ip6(), which
- * needs the netlink socket that mode deliberately never opened. Starting one
- * passt with both families therefore dies with
+ * Two helpers rather than one dual-stack passt: a helper that loses its IPv6
+ * half must not take IPv4 down with it, and --passt-pid-file names the IPv4
+ * helper whose loss ends the run. A single dual-stack passt is no longer
+ * blocked by netlink -- passt-android's prepatched mode now configures both
+ * families locally -- but keeping the families in separate processes keeps
+ * the failure domains and the IPv4 path unchanged.
  *
- *	netlink: Failed to send(): Bad file descriptor
- *
- * and starting it with --ipv6 only (which is how passt spells 'IPv6, no IPv4')
- * would take IPv4 away from the guest. So --ipv6 forks a *second*, IPv6-only
- * passt and the pump routes each guest frame by its EtherType: 0x86dd to the
- * IPv6 helper, everything else -- IPv4 and ARP -- to the IPv4 helper. The two
- * helpers are independent point-to-point links that happen to share a wire,
- * which is exactly what a router with one IPv4 and one IPv6 address is.
- *
- * That IPv6 helper does need netlink at start-up, to learn a template
- * interface's link-local address and prefix. Android denied NETLINK_ROUTE to
- * app uids when this bridge was written; it allows it on the device this was
- * measured on. When it is denied the helper exits, umnet says so and the run
- * continues with IPv4 only -- the guest simply has no IPv6, which is the
- * honest outcome and is what the gate checks for.
+ * The helper needs a passt built with that prepatched-IPv6 support. An older
+ * passt opens NETLINK_ROUTE for IPv6, which Android denies to an app uid
+ * (bind((0, 0)) returns EACCES), so the helper exits before its event loop;
+ * umnet says so and the run continues with IPv4 only. The guest simply has no
+ * IPv6, which is the honest outcome and is what the gate checks for.
  *
  * Usage:
  *   umnet [--passt PATH] [--passt-pid-file PATH] [--mac MAC] [--iface IF]
@@ -702,10 +693,10 @@ int main(int argc, char **argv)
 	v4_extra[n4] = NULL;
 
 	/*
-	 * The IPv6 helper is IPv6-only: -6 is passt's way of saying "no IPv4",
-	 * and it also selects the path that keeps netlink available, which the
-	 * IPv6 configuration needs.  The comment above explains why this is a
-	 * second process rather than one dual-stack passt.
+	 * The IPv6 helper is IPv6-only: -6 is passt's way of saying "no IPv4".
+	 * With passt-android's prepatched-IPv6 support this configures the
+	 * address locally from -a/-g/-D without touching netlink; an older
+	 * passt needs netlink here and exits (see the header comment).
 	 */
 	if (ipv6) {
 		v6_extra[n6++] = "-6";
@@ -741,10 +732,10 @@ int main(int argc, char **argv)
 			fprintf(stderr, "umnet: cannot start the IPv6 helper\n");
 		} else {
 			/*
-			 * passt parses its configuration and (for IPv6) talks to
-			 * netlink before it reaches its event loop, so a failure
-			 * happens in milliseconds.  Give it that moment, then
-			 * decide whether this run has IPv6 at all.
+			 * passt parses its configuration before it reaches its
+			 * event loop (an older build also opens netlink for
+			 * IPv6), so a failure happens in milliseconds.  Give it
+			 * that moment, then decide whether this run has IPv6.
 			 */
 			usleep(200000);
 			if (waitpid(pid, &status, WNOHANG) == pid) {

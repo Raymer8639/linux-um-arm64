@@ -18,7 +18,9 @@ This directory holds records of device runs. One run of
 ```
 
 The JSON is what `check` validates and what a release cites; the markdown is
-the same document, rendered so a reviewer does not have to read JSON.
+the same document, rendered so a reviewer does not have to read JSON. An
+`--ipv6` gate run uses `--label` to get its own file stem
+(`<date>-umnet-network-ipv6.*`).
 
 `SAMPLE-synthetic-umnet-network.*` is a sample produced by the harness's
 stand-in gate. It exists to show the format, it is marked `synthetic` inside,
@@ -51,6 +53,12 @@ Useful variations:
 ```sh
 # probe the environment and hash the assets without booting anything
 record-evidence.sh record --dry-run
+
+# the IPv6 gate: extra gate arguments go through --gate-arg, and --label keeps
+# the record from colliding with the IPv4 one
+record-evidence.sh record --dns 8.8.8.8 \
+    --gate-arg=--ipv6 --gate-arg=--ipv6-dns=2001:4860:4860::8888 \
+    --label umnet-network-ipv6
 
 # validate a record before committing it (and re-hash what is still on disk)
 record-evidence.sh check docs/evidence/<file>.json --verify-hashes

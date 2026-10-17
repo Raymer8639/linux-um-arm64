@@ -130,7 +130,11 @@ it print `verdict=SKIP` and exit 77 rather than exit 1, because "broken" and
 Soak and fault records live in `docs/evidence/soak/` and
 `docs/evidence/faults/`. They carry the same rule: a run that could not be
 attempted is `SKIP`, and any leak or unmet criterion is a `FAIL` even when
-every other round was clean.
+every other round was clean. [soak/README.md](soak/README.md) names the
+reference soak (an hour-scale run, and the one round it failed on the external
+network) and [faults/README.md](faults/README.md) the three fault scenarios,
+including why the older `FAIL` records in those directories are part of the
+evidence rather than noise.
 
 Run one device tool at a time. The soak and fault tools decide "did anything
 leak?" by process name and start time, so a second harness run on the same

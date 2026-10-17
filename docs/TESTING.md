@@ -56,3 +56,55 @@ tools/um-arm64/harness/inject-faults.sh --scenario link-drop
 Each tool has an offline `self-test` that needs no phone; those self-tests are
 what CI can run. `verdict=SKIP` (exit 77) means the environment made the run
 impossible -- missing assets, no passt, a traced host -- and is never a pass.
+
+## Fault injection
+
+A gate that passes proves the happy path. It does not say what happens when the
+link disappears *while the guest is using it*, when the guest kernel dies, or
+when the bridge is left holding the pieces -- the failures a phone user actually
+hits (a radio handover, an Android low-memory kill, a kernel oops).
+`harness/inject-faults.sh` destroys one of those mid-run and states its criteria
+up front, so "it ran" cannot be mistaken for "it passed":
+
+| scenario | destroyed mid-run | required criteria |
+|---|---|---|
+| `link-drop` | the passt helper (`SIGKILL`) | the injection landed while the run was live; the run ended by itself; it did not report `PASS`; no umnet/passt/UML survived; the bridge's own output shows the link going away |
+| `kernel-kill` | the UML process (`SIGKILL`) | the injection landed while live; the run ended by itself; it did not report `PASS`; no survivors |
+| `guest-panic` | the guest kernel (`sysrq-c`) | the panic is visible in the guest log; the trigger reached the kernel; the guest did not report a clean exit; the run ended by itself; no survivors |
+
+All three judge and pass on the device (2026-10-17); the records are in
+`docs/evidence/faults/`, and its README names the reference set. Two device
+facts are what turned the scenarios from misleading into judged, and any future
+scenario inherits them:
+
+- **A killed helper cannot be found by scanning `/proc`.** passt is alive, has
+  the same uid, answers `kill(pid, 0)`, and does not appear under `/proc/<pid>`
+  on this platform. The bridge therefore writes the pid it forked into
+  `--passt-pid-file`, and the injector signals exactly that pid. A test that
+  looks for passt by name finds nothing and kills the wrong process.
+- **UML needs a controlling terminal even when a script starts it.** With
+  `con0=fd:0,fd:1` on a plain pipe the kernel dies before userspace and prints
+  nothing at all. The panicking scenario boots through the gate (which allocates
+  a pty) for that reason.
+
+```sh
+tools/um-arm64/harness/inject-faults.sh --scenario link-drop
+tools/um-arm64/harness/inject-faults.sh --scenario kernel-kill
+tools/um-arm64/harness/inject-faults.sh --scenario guest-panic
+```
+
+`harness/soak-umnet.sh` is the repetition counterpart: it runs the network gate
+in a loop and reports per-round verdicts, leaked processes and memory drift.
+`--minutes` bounds the run by wall clock as well as `--rounds` bounds the round
+count, so an hour-scale run is
+`soak-umnet.sh --minutes 180 --rounds 5000` (stop at whichever bound is reached
+first). Records land in `docs/evidence/soak/`. The gate's two external-network
+checks are sized for a phone: the announced resolver sits behind the phone's own
+UDP path (measured here: ~10% of plain queries time out), so name resolution is
+tried up to eight times and the TCP fetch is retried whole, with 30 s per
+transfer. An hour-scale run therefore measures the bridge, not the current state
+of the public network; a bridge that does not carry frames still fails them.
+
+Run one device tool at a time: the leak criteria count processes by name and
+start time, so a second harness running on the same phone is indistinguishable
+from a survivor. Both tools say so in their own `not-verified` list.

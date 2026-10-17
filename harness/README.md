@@ -37,6 +37,52 @@ hostfs root and is intentionally not expected in `/proc/cmdline`.
 harness/rootfs-alpine-termux.sh $PREFIX/tmp/um-arm64/rootfs
 ```
 
+## init protocol 2: binds
+
+`um-init` implements neoproot's second init protocol, which lets an **ext4**
+guest receive `-b HOST:GUEST[:ro]` binds. The backend cannot perform those
+mounts itself: an ext4 guest has its own root and the only host directory it
+sees is the hostfs session at `/run/neoproot`. Before `init.sh` runs,
+`um-init` therefore writes `/run/neoproot/init-features`:
+
+```
+neoproot-init-protocol=2
+feature=binds
+```
+
+That declaration is what the generated `init.sh` checks when the run asked for
+binds. Without it the wrapper prints `UM_PROTOCOL_ERROR=binds-unsupported`
+and exits 125 rather than run the command with its binds silently missing. The
+write is best effort, and a session without a bind list never reads the file.
+
+When `/run/neoproot/binds` exists, each line is one bind, tab-separated:
+
+```
+source<TAB>target<TAB>dir|file<TAB>ro|rw<TAB>name
+```
+
+`source` is a hostfs mount option (a path relative to the kernel's
+`hostfs=` root), `target` an absolute guest path, and `name` the basename of
+a file bind (`-` for a directory bind). Lines starting with `#` are ignored.
+A directory bind is `mount -t hostfs -o SOURCE none TARGET`. A file bind
+mounts the record's source -- the file's parent directory, because hostfs
+cannot mount a file as a root -- on scratch space under `/run`, then binds
+`SCRATCH/NAME` onto `TARGET`. `ro` remounts a directory bind read-only; for
+a file bind the scratch mount is remounted read-only before the file is bound,
+so the bind inherits it.
+
+A bind that cannot be mounted writes `/run/neoproot/protocol-error` (for
+example `UM_BIND_ERROR=/guest/path:mount-failed`), writes status `125`,
+prints `UM_SESSION_ERROR=125`, and powers off. The command is not run.
+
+A session without `/run/neoproot/binds` skips the bind code entirely, so the
+legacy `/um-command.sh` flow and ordinary session runs behave as before.
+
+The protocol is needed only for ext4 roots with binds: a directory root is
+bound by the wrapper instead. The image must carry this `um-init`; an image
+with an older init fails the run by design. The supervisor side is described in
+neoproot's `README.md` (Binds) and reference `tests/um-init-ext4.sh`.
+
 ## Boot
 
 Run from the Termux host, not inside a neoproot container:

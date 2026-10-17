@@ -1,0 +1,203 @@
+{
+  "fault-format": 1,
+  "kind": "umnet-network-fault-injection",
+  "scenario": "guest-panic",
+  "synthetic": false,
+  "recorded": "2026-10-17T00:33:33Z",
+  "verdict": "PASS",
+  "criteria": [
+    {
+      "id": "c1-panic-observed",
+      "description": "the guest log shows a kernel panic",
+      "ok": true,
+      "evidence": "panic marker found",
+      "required": true
+    },
+    {
+      "id": "c2-trigger-reached-kernel",
+      "description": "the sysrq trigger reached the kernel (no PANIC_NOT_TRIGGERED)",
+      "ok": true,
+      "evidence": "trigger took effect",
+      "required": true
+    },
+    {
+      "id": "c3-no-clean-guest-exit",
+      "description": "a panicked guest does not report a clean command exit",
+      "ok": true,
+      "evidence": "no clean-exit marker",
+      "required": true
+    },
+    {
+      "id": "c2-run-ended",
+      "description": "the run ended by itself within 90s of the injection",
+      "ok": true,
+      "evidence": "ended 7.1s into the run",
+      "required": true
+    },
+    {
+      "id": "c4-no-survivors",
+      "description": "no umnet/passt/UML process survived the run",
+      "ok": true,
+      "evidence": "none after 3s settle",
+      "required": true
+    }
+  ],
+  "run": {
+    "argv": [
+      "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src/tools/um-arm64/harness/test-umnet-network.sh",
+      "--workdir",
+      "/data/data/com.termux/files/usr/tmp/um-network",
+      "--log",
+      "net-gate.log",
+      "--timeout",
+      "300",
+      "--dns",
+      "1.1.1.1",
+      "--netroot",
+      "/data/data/com.termux/files/usr/tmp/um-faults/panic-root",
+      "--keep-guest-command",
+      "--log",
+      "/data/data/com.termux/files/usr/tmp/um-faults/panic-gate.log"
+    ],
+    "exit-code": 1,
+    "timed-out": false,
+    "killed-tree": [],
+    "seconds": 7.108,
+    "verdict-line": "FAIL",
+    "checks": [
+      {
+        "name": "dhcp",
+        "status": "MISSING"
+      },
+      {
+        "name": "addr",
+        "status": "MISSING"
+      },
+      {
+        "name": "route",
+        "status": "MISSING"
+      },
+      {
+        "name": "dns-config",
+        "status": "ok"
+      },
+      {
+        "name": "icmp",
+        "status": "MISSING"
+      },
+      {
+        "name": "dns-lookup",
+        "status": "MISSING"
+      },
+      {
+        "name": "tcp",
+        "status": "MISSING"
+      },
+      {
+        "name": "concurrent",
+        "status": "MISSING"
+      },
+      {
+        "name": "clean-exit",
+        "status": "MISSING"
+      }
+    ],
+    "teardown": "no passt teardown line",
+    "stderr-tail": [
+      "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+      "gate: dhcp         MISSING",
+      "gate: addr         MISSING",
+      "gate: route        MISSING",
+      "gate: dns-config   ok",
+      "gate: icmp         MISSING",
+      "gate: dns-lookup   MISSING",
+      "gate: tcp          MISSING",
+      "gate: concurrent   MISSING",
+      "gate: clean-exit   MISSING",
+      "gate: teardown: no passt teardown line",
+      "verdict=FAIL",
+      "log=/data/data/com.termux/files/usr/tmp/um-faults/panic-gate.log"
+    ]
+  },
+  "survivors": [],
+  "guest-log": {
+    "path": "/data/data/com.termux/files/usr/tmp/um-faults/panic-gate.log",
+    "sha256": "bb97152c42d5a36f7de8c7d874f746d6a858f46af0e965240a918a6652308965",
+    "size": 5976,
+    "lines": 122,
+    "panic-observed": true,
+    "panic-not-triggered": false,
+    "clean-guest-exit": false,
+    "excerpt": {
+      "head": [
+        "umnet: announcing nameserver 1.1.1.1 (--dns)",
+        "Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+        "MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host 127.0.0.1: 10.0.2.2",
+        "DHCP:",
+        "    assign: 10.0.2.15",
+        "    mask: 255.255.255.0",
+        "    router: 10.0.2.2",
+        "DNS:",
+        "    1.1.1.1",
+        "Inbound forwarding rules (HOST):"
+      ],
+      "tail": [
+        "Stack:",
+        " 80ccf9f0 6002df3c 6072dae0 00000000",
+        " 604a3880 605d1400 00000000 00000000",
+        " 606fb4c0 6053189b 80ccfa10 6002dee8",
+        "Call Trace:",
+        " [<600242fc>] show_stack+0xf0/0x108",
+        " [<6002df3c>] __dump_stack+0x24/0x30",
+        " [<6002dee8>] dump_stack_lvl+0x20/0x50",
+        " [<6002df5c>] dump_stack+0x14/0x1c",
+        " [<600249d8>] vpanic+0x114/0x2ec",
+        " [<600248c4>] vpanic+0x0/0x2ec",
+        " [<6002c2a4>] try_to_generate_entropy+0x0/0x1c0",
+        " [<6029b8f4>] ? __handle_sysrq+0x118/0x12c",
+        " [<6029b904>] __handle_sysrq+0x128/0x12c",
+        " [<6029c458>] write_sysrq_trigger+0xac/0xdc",
+        " [<6018fd3c>] proc_reg_write+0x64/0xd4",
+        " [<60122e78>] vfs_write+0xf8/0x344",
+        " [<601231dc>] ksys_write+0x5c/0xa8",
+        " [<60123234>] sys_write+0xc/0x14",
+        " [<6003370c>] handle_syscall+0x6c/0x94",
+        " [<600448a4>] userspace+0x49c/0x6e4",
+        " [<6004484c>] ? userspace+0x444/0x6e4",
+        " [<600314d0>] fork_handler+0x34/0x40",
+        " [<6003149c>] fork_handler+0x0/0x40",
+        "umnet: kernel killed by signal 6 (Aborted)"
+      ]
+    }
+  },
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "not-verified": [
+    "a fault injection exercises one failure at one moment; it does not prove the bridge handles every failure mode",
+    "link-drop kills passt, which is the closest a non-root Termux process gets to dropping the host link; radio handover and interface-down are not reproducible here",
+    "guest-panic needs CONFIG_MAGIC_SYSRQ and a writable /proc/sysrq-trigger in the guest; PANIC_NOT_TRIGGERED in the log means the trigger never reached the kernel",
+    "the panic scenario boots a copy of the rootfs and its own command line; it does not prove the release gate's own arguments are right",
+    "timing is wall-clock, not deterministic: the fault is injected a fixed delay after the UML process appears",
+    "the survivor check is global: another process on the phone whose command line matches a watched token (a second harness run, say) is reported as a survivor too; run device gates one at a time"
+  ],
+  "notes": [
+    "the panic root is left at /data/data/com.termux/files/usr/tmp/um-faults/panic-root for inspection; remove it with rm -rf when finished"
+  ],
+  "exit-code": 0,
+  "message": "guest-panic: all required criteria met"
+}

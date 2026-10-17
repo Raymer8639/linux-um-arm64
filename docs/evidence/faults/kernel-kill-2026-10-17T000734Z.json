@@ -1,0 +1,197 @@
+{
+  "fault-format": 1,
+  "kind": "umnet-network-fault-injection",
+  "scenario": "kernel-kill",
+  "synthetic": false,
+  "recorded": "2026-10-17T00:07:34Z",
+  "verdict": "PASS",
+  "criteria": [
+    {
+      "id": "c1-injected-live",
+      "description": "the UML process was killed while the run was live",
+      "ok": true,
+      "evidence": "SIGKILL to pid 8435 (/data/data/com.termux/files/usr/tmp/um-network/umnet --passt /data/data/com.termux/files/usr/tmp/um-network/passt-bionic --dns 1.1.1.1 -- /data/data/com.termux/files/usr/tmp/um-arm64/new/linux-bionic mem=512M rw init=/um-init con=null con0=fd:0,fd:1 stub_exe=/data/data/com.termux/files/usr/tmp/um-arm64/new/stub_exe rootfstype=hostfs rootflags=/data/data/com.termux/files/usr/tmp/um-network/netroot panic=1) 1.4s into the run",
+      "required": true
+    },
+    {
+      "id": "c2-run-ended",
+      "description": "the run ended by itself within 90s of the injection",
+      "ok": true,
+      "evidence": "ended 4.4s into the run",
+      "required": true
+    },
+    {
+      "id": "c3-no-false-pass",
+      "description": "a run whose link or guest was destroyed does not report PASS",
+      "ok": true,
+      "evidence": "gate verdict=FAIL",
+      "required": true
+    },
+    {
+      "id": "c4-no-survivors",
+      "description": "no umnet/passt/UML process survived the run",
+      "ok": true,
+      "evidence": "none after 3s settle",
+      "required": true
+    }
+  ],
+  "run": {
+    "argv": [
+      "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src/tools/um-arm64/harness/test-umnet-network.sh",
+      "--workdir",
+      "/data/data/com.termux/files/usr/tmp/um-network",
+      "--log",
+      "net-gate.log",
+      "--timeout",
+      "300",
+      "--dns",
+      "1.1.1.1"
+    ],
+    "exit-code": 1,
+    "timed-out": false,
+    "killed-tree": [],
+    "seconds": 4.443,
+    "verdict-line": "FAIL",
+    "checks": [
+      {
+        "name": "dhcp",
+        "status": "ok"
+      },
+      {
+        "name": "addr",
+        "status": "MISSING"
+      },
+      {
+        "name": "route",
+        "status": "MISSING"
+      },
+      {
+        "name": "dns-config",
+        "status": "ok"
+      },
+      {
+        "name": "icmp",
+        "status": "MISSING"
+      },
+      {
+        "name": "dns-lookup",
+        "status": "MISSING"
+      },
+      {
+        "name": "tcp",
+        "status": "MISSING"
+      },
+      {
+        "name": "concurrent",
+        "status": "MISSING"
+      },
+      {
+        "name": "clean-exit",
+        "status": "MISSING"
+      }
+    ],
+    "teardown": "no passt teardown line",
+    "stderr-tail": [
+      "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+      "gate: dhcp         ok",
+      "gate: addr         MISSING",
+      "gate: route        MISSING",
+      "gate: dns-config   ok",
+      "gate: icmp         MISSING",
+      "gate: dns-lookup   MISSING",
+      "gate: tcp          MISSING",
+      "gate: concurrent   MISSING",
+      "gate: clean-exit   MISSING",
+      "gate: teardown: no passt teardown line",
+      "verdict=FAIL",
+      "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+    ]
+  },
+  "survivors": [],
+  "guest-log": {
+    "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+    "sha256": "31138a2c06734bd56db8f7974fea5cfd7f07455da35aaa149ee5b2dbc4e97299",
+    "size": 5648,
+    "lines": 111,
+    "panic-observed": false,
+    "panic-not-triggered": false,
+    "clean-guest-exit": false,
+    "excerpt": {
+      "head": [
+        "umnet: announcing nameserver 1.1.1.1 (--dns)",
+        "Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+        "MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host 127.0.0.1: 10.0.2.2",
+        "DHCP:",
+        "    assign: 10.0.2.15",
+        "    mask: 255.255.255.0",
+        "    router: 10.0.2.2",
+        "DNS:",
+        "    1.1.1.1",
+        "Inbound forwarding rules (HOST):"
+      ],
+      "tail": [
+        "printk: legacy console [mc-1] enabled",
+        "Failed to initialize ubd device 0 :Couldn't determine size of device's file",
+        "winch_thread : TIOCSCTTY failed on fd 1 err = 1",
+        "VFS: Mounted root (hostfs filesystem) on device 0:15.",
+        "devtmpfs: mounted",
+        "VFS: Pivoted into new rootfs",
+        "Run /um-init as init process",
+        "NET_START",
+        "1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN qlen 1000",
+        "    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00",
+        "2: dummy0: <BROADCAST,NOARP> mtu 1500 qdisc noop state DOWN qlen 1000",
+        "    link/ether 2a:d5:54:b4:58:19 brd ff:ff:ff:ff:ff:ff",
+        "3: vec0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN qlen 1000",
+        "    link/ether 02:00:00:00:00:01 brd ff:ff:ff:ff:ff:ff",
+        "NET_VEC_UP",
+        "NET_DHCP",
+        "udhcpc: started, v1.36.1",
+        "udhcpc: broadcasting discover",
+        "New guest MAC address observed: 02:00:00:00:00:01",
+        "DHCP: offer to discover",
+        "    from 02:00:00:00:00:01",
+        "udhcpc: broadcasting select for 10.0.2.15, server 10.0.2.2",
+        "DHCP: ack to request",
+        "    from 02:00:00:00:00:01",
+        "udhcpc: lease of 10.0.2.15 obtained from 10.0.2.2, lease time 4294967295"
+      ]
+    }
+  },
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "not-verified": [
+    "a fault injection exercises one failure at one moment; it does not prove the bridge handles every failure mode",
+    "link-drop kills passt, which is the closest a non-root Termux process gets to dropping the host link; radio handover and interface-down are not reproducible here",
+    "guest-panic needs CONFIG_MAGIC_SYSRQ and a writable /proc/sysrq-trigger in the guest; PANIC_NOT_TRIGGERED in the log means the trigger never reached the kernel",
+    "the panic scenario boots a copy of the rootfs and its own command line; it does not prove the release gate's own arguments are right",
+    "timing is wall-clock, not deterministic: the fault is injected a fixed delay after the UML process appears",
+    "the survivor check is global: another process on the phone whose command line matches a watched token (a second harness run, say) is reported as a survivor too; run device gates one at a time"
+  ],
+  "notes": [],
+  "exit-code": 0,
+  "message": "kernel-kill: all required criteria met",
+  "injection": {
+    "target": "linux-bionic",
+    "signal": "SIGKILL",
+    "injected": true,
+    "pid": 8435,
+    "at-seconds": 1.4,
+    "cmdline": "/data/data/com.termux/files/usr/tmp/um-network/umnet --passt /data/data/com.termux/files/usr/tmp/um-network/passt-bionic --dns 1.1.1.1 -- /data/data/com.termux/files/usr/tmp/um-arm64/new/linux-bionic mem=512M rw init=/um-init con=null con0=fd:0,fd:1 stub_exe=/data/data/com.termux/files/usr/tmp/um-arm64/new/stub_exe rootfstype=hostfs rootflags=/data/data/com.termux/files/usr/tmp/um-network/netroot panic=1"
+  }
+}

@@ -1,0 +1,181 @@
+{
+  "fault-format": 1,
+  "kind": "umnet-network-fault-injection",
+  "scenario": "guest-panic",
+  "synthetic": false,
+  "recorded": "2026-10-17T00:09:08Z",
+  "verdict": "FAIL",
+  "criteria": [
+    {
+      "id": "c1-panic-observed",
+      "description": "the guest log shows a kernel panic",
+      "ok": false,
+      "evidence": "no 'Kernel panic' in /data/data/com.termux/files/usr/tmp/um-faults/panic-gate.log",
+      "required": true
+    },
+    {
+      "id": "c2-trigger-reached-kernel",
+      "description": "the sysrq trigger reached the kernel (no PANIC_NOT_TRIGGERED)",
+      "ok": true,
+      "evidence": "trigger took effect",
+      "required": true
+    },
+    {
+      "id": "c3-no-clean-guest-exit",
+      "description": "a panicked guest does not report a clean command exit",
+      "ok": true,
+      "evidence": "no clean-exit marker",
+      "required": true
+    },
+    {
+      "id": "c2-run-ended",
+      "description": "the run ended by itself within 90s of the injection",
+      "ok": true,
+      "evidence": "ended 6.7s into the run",
+      "required": true
+    },
+    {
+      "id": "c4-no-survivors",
+      "description": "no umnet/passt/UML process survived the run",
+      "ok": true,
+      "evidence": "none after 3s settle",
+      "required": true
+    }
+  ],
+  "run": {
+    "argv": [
+      "/data/data/com.termux/files/usr/tmp/um-network/umnet",
+      "--passt",
+      "/data/data/com.termux/files/usr/tmp/um-network/passt-bionic",
+      "--dns",
+      "1.1.1.1",
+      "--",
+      "/data/data/com.termux/files/usr/tmp/um-arm64/new/linux-bionic",
+      "mem=512M",
+      "rw",
+      "init=/um-init",
+      "con=null",
+      "con0=fd:0,fd:1",
+      "stub_exe=/data/data/com.termux/files/usr/tmp/um-arm64/new/stub_exe",
+      "rootfstype=hostfs",
+      "rootflags=/data/data/com.termux/files/usr/tmp/um-faults/panic-root",
+      "panic=1"
+    ],
+    "exit-code": 134,
+    "timed-out": false,
+    "killed-tree": [],
+    "seconds": 6.659,
+    "verdict-line": null,
+    "checks": [],
+    "teardown": null,
+    "stderr-tail": [
+      "umnet: announcing nameserver 1.1.1.1 (--dns)",
+      "Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+      "MAC:",
+      "    host: 9a:55:9a:55:9a:55",
+      "    NAT to host 127.0.0.1: 10.0.2.2",
+      "DHCP:",
+      "    assign: 10.0.2.15",
+      "    mask: 255.255.255.0",
+      "    router: 10.0.2.2",
+      "DNS:",
+      "    1.1.1.1",
+      "Inbound forwarding rules (HOST):",
+      "Address space: host top 0x8000000000, stub at 0x7fffff4000, guest TASK_SIZE 0x7fc0000000",
+      "Core dump limits :",
+      "\tsoft - 0",
+      "\thard - NONE",
+      "Stub signal stack: 16384 bytes, host AT_MINSIGSTKSZ 4720",
+      "Checking environment variables for a tempdir.../data/data/com.termux/files/usr/tmp",
+      "Checking if /data/data/com.termux/files/usr/tmp is on tmpfs...no",
+      "Warning: tempdir /data/data/com.termux/files/usr/tmp is not on tmpfs",
+      "Checking PROT_EXEC mmap in /data/data/com.termux/files/usr/tmp...OK",
+      "Checking the stub's cycle counter...OK",
+      "Userspace mode: ptrace",
+      "Checking that ptrace can change system call numbers...OK",
+      "Checking syscall emulation for ptrace...OK",
+      "umnet: kernel killed by signal 6 (Aborted)"
+    ]
+  },
+  "survivors": [],
+  "guest-log": {
+    "path": "/data/data/com.termux/files/usr/tmp/um-faults/panic-gate.log",
+    "sha256": "acd2f868aa2e1162975f0ee2cc5de34760bbc1fda281b108f1c6c77900e9a11d",
+    "size": 988,
+    "lines": 26,
+    "panic-observed": false,
+    "panic-not-triggered": false,
+    "clean-guest-exit": false,
+    "excerpt": {
+      "head": [
+        "umnet: announcing nameserver 1.1.1.1 (--dns)",
+        "Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+        "MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host 127.0.0.1: 10.0.2.2",
+        "DHCP:",
+        "    assign: 10.0.2.15",
+        "    mask: 255.255.255.0",
+        "    router: 10.0.2.2",
+        "DNS:",
+        "    1.1.1.1",
+        "Inbound forwarding rules (HOST):"
+      ],
+      "tail": [
+        "Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+        "MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host 127.0.0.1: 10.0.2.2",
+        "DHCP:",
+        "    assign: 10.0.2.15",
+        "    mask: 255.255.255.0",
+        "    router: 10.0.2.2",
+        "DNS:",
+        "    1.1.1.1",
+        "Inbound forwarding rules (HOST):",
+        "Address space: host top 0x8000000000, stub at 0x7fffff4000, guest TASK_SIZE 0x7fc0000000",
+        "Core dump limits :",
+        "\tsoft - 0",
+        "\thard - NONE",
+        "Stub signal stack: 16384 bytes, host AT_MINSIGSTKSZ 4720",
+        "Checking environment variables for a tempdir.../data/data/com.termux/files/usr/tmp",
+        "Checking if /data/data/com.termux/files/usr/tmp is on tmpfs...no",
+        "Warning: tempdir /data/data/com.termux/files/usr/tmp is not on tmpfs",
+        "Checking PROT_EXEC mmap in /data/data/com.termux/files/usr/tmp...OK",
+        "Checking the stub's cycle counter...OK",
+        "Userspace mode: ptrace",
+        "Checking that ptrace can change system call numbers...OK",
+        "Checking syscall emulation for ptrace...OK",
+        "umnet: kernel killed by signal 6 (Aborted)"
+      ]
+    }
+  },
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "not-verified": [
+    "a fault injection exercises one failure at one moment; it does not prove the bridge handles every failure mode",
+    "link-drop kills passt, which is the closest a non-root Termux process gets to dropping the host link; radio handover and interface-down are not reproducible here",
+    "guest-panic needs CONFIG_MAGIC_SYSRQ and a writable /proc/sysrq-trigger in the guest; PANIC_NOT_TRIGGERED in the log means the trigger never reached the kernel",
+    "the panic scenario boots a copy of the rootfs and its own command line; it does not prove the release gate's own arguments are right",
+    "timing is wall-clock, not deterministic: the fault is injected a fixed delay after the UML process appears",
+    "the survivor check is global: another process on the phone whose command line matches a watched token (a second harness run, say) is reported as a survivor too; run device gates one at a time"
+  ],
+  "notes": [
+    "the panic root is left at /data/data/com.termux/files/usr/tmp/um-faults/panic-root for inspection; remove it with rm -rf when finished"
+  ],
+  "exit-code": 1,
+  "message": "guest-panic: c1-panic-observed"
+}

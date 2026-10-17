@@ -6,11 +6,21 @@
 # hanging rather than by failing. A 16 KB guest runs on both: four host pages
 # per guest page on a 4 KB host, one-to-one on a 16 KB one.
 #
-# So 16 KB is the only setting that covers the whole fleet, and Android 15 and
-# later ship 16 KB kernels. The cost is internal fragmentation on 4 KB devices,
-# a few percent of memory; the alternative costs not booting at all on current
-# hardware. CONFIG_PAGE_SIZE_4KB remains available for memory-constrained
-# builds that know their host.
+# So 16 KB is the only setting that cannot be wrong about the host, which is
+# why it is the default.
+#
+# What is *not* true is that "Android 15 and later ship 16 KB kernels" -- that
+# was the reasoning here until a counterexample turned up. A Redmi 23124RN87C
+# running Android 15 (SDK 35), the phone this port is developed against, reports
+# 4 kB (KernelPageSize in /proc/self/smaps), and the 16 KB guest boots and runs
+# there. Devices split: some ship 16 KB, some do not, and the version number does
+# not tell you which. The direction of the constraint is what matters -- a 4 KB
+# guest cannot boot on a 16 KB host, a 16 KB guest boots on either -- so 16 KB
+# stays the default on that basis alone.
+#
+# The cost is internal fragmentation on 4 KB devices, a few percent of memory.
+# CONFIG_PAGE_SIZE_4KB remains available for memory-constrained builds that know
+# their host.
 #
 CONFIG_PAGE_SIZE_16KB=y
 CONFIG_BLK_DEV_INITRD=y

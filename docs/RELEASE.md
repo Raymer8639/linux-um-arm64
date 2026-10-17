@@ -108,6 +108,91 @@ Exit codes follow `harness/boot.py`:
 `SKIP` never means "looked wrong but we did not feel like failing". Anything the
 release itself gets wrong is `FAIL`.
 
+## Release checklist
+
+Two kinds of step: what a GitHub runner does alone, and what has to happen on
+the phone. A release is ready only when both are done and the device evidence
+is archived in this repository.
+
+### Automatic -- CI, on every pull request
+
+1. **`x86_64-build`** -- the reference UML build compiles. It proves the tree
+   is buildable, not that the Android binaries work.
+2. **`harness-checks`** -- shell and Python syntax, the um-init gates, and
+   `verify-release.py self-test` (the release checker proving it can reject
+   broken fixtures). When harness tools gain an offline `--self-test`, add it
+   here: those self-tests are the only thing that proves the tooling works
+   when nobody has a phone.
+3. **`android-bionic-build`** (non-blocking) -- `umnet` cross-compiles against
+   NDK r29 for API 30 and comes out aarch64 and static. Non-blocking on
+   purpose: a 3 GB NDK download must not turn a green tree red for reasons
+   unrelated to the change.
+4. **`record-evidence.py check`** (not wired into CI yet) -- every committed
+   record under `docs/evidence/` validates; `--allow-synthetic` applies to the
+   sample file only. Add it to `harness-checks` now that the evidence
+   directory exists.
+
+CI cannot do steps 5-9: they need a phone.
+
+### Human, on the Termux host -- the part CI cannot do
+
+5. **Rebuild the assets from the commit being released** (`linux-bionic`,
+   `stub_exe`, `umnet`, and the companion `passt-bionic`). The manifest hashes
+   come from these binaries, so they must be built from the released commit,
+   not from a working tree with local changes.
+6. **Run the network gate and archive the run**:
+
+   ```sh
+   tools/um-arm64/harness/record-evidence.sh record \
+       --workdir "$PREFIX/tmp/um-network" --out docs/evidence
+   ```
+
+   Commit the record (JSON + markdown + guest log). A `SKIP` record documents
+   an attempt and is worth committing, but it is **not** release evidence: a
+   release claiming network support needs a `PASS` record for those binaries.
+7. **Validate the record** before trusting or citing it:
+
+   ```sh
+   tools/um-arm64/harness/record-evidence.sh check docs/evidence/<file>.json --verify-hashes
+   ```
+
+   `--verify-hashes` fails if a component no longer matches the binary the
+   record was made from.
+8. **Soak and fault injection** -- recommended whenever the bridge, the kernel
+   arguments or the teardown path changed:
+
+   ```sh
+   tools/um-arm64/harness/soak-umnet.sh --rounds 20
+   tools/um-arm64/harness/inject-faults.sh --scenario link-drop
+   tools/um-arm64/harness/inject-faults.sh --scenario guest-panic
+   tools/um-arm64/harness/inject-faults.sh --scenario kernel-kill
+   ```
+
+   Records land in `docs/evidence/soak/` and `docs/evidence/faults/`.
+9. **State the device matrix and the gaps** in the release notes: the device,
+   Android release and host kernel the evidence came from, the record's
+   `not-verified` list, and anything the release does not cover.
+
+### Release assembly
+
+10. **Write `MANIFEST` and `SHA256SUMS`** from the asset directory (command
+    above), and cite the evidence record in the release notes.
+11. **Verify the manifest** with `verify-release.py check --tag <tag>` (or
+    `--dir <dir> --require-all` before publishing).
+12. **Tag, publish, then verify the published release once more** with
+    `verify-release.py check --tag <tag>`: the published bytes are the ones a
+    downloader receives.
+
+### What blocks a release
+
+| condition | verdict | release? |
+| --- | --- | --- |
+| CI red on the merge commit | `FAIL` | no |
+| device gate failed after the last change to runtime behaviour | `FAIL` | no |
+| device gate skipped (no phone or no assets) and runtime behaviour changed | `SKIP` | only with the gap written into the release notes |
+| no device evidence at all for a release that claims device support | -- | no |
+| documentation-only or repository-settings change | -- | no tag and no Release |
+
 ## ext4 gate
 
 `ext4-gate` (and the per-asset `gate` field) must distinguish a real pass from

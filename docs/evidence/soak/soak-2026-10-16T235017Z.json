@@ -1,0 +1,1075 @@
+{
+  "soak-format": 1,
+  "kind": "umnet-network-soak",
+  "recorded": "2026-10-16T23:50:16Z",
+  "verdict": "FAIL",
+  "exit-code": 1,
+  "message": "8 process(es) survived their round",
+  "rounds": [
+    {
+      "round": 1,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.861,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 3
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2607288,
+        "after": 2607732
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "28929db3f8917c76bf68c55bfc83faf9ce444b4e94f7f1dd14ccbfd5c73e04e9",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.9 avg=2.0 max=2.1 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 2,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.849,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2607732,
+        "after": 2606144
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "a387ca73f400f33403d2b4ca15f2a825a1a332b31278f123c574d6645f4b365f",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.3 avg=2.0 max=2.7 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 3,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.853,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2606144,
+        "after": 2600736
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "2454fa212abf3ef9d322ae80c93d077b1555424874de5057a2d9295dc8ed38e9",
+        "size": 7402,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.7 avg=3.1 max=3.6 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 4,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 5.02,
+      "peaks": {
+        "umnet": 2,
+        "passt-bionic": 1,
+        "linux-bionic": 3
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2600736,
+        "after": 2621828
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "6a7301cf1c6cf40fc67bc7216c9d18eb7065f38386ed3a62c8583d4927fdc2cb",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.8 avg=3.1 max=4.4 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 5,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.96,
+      "peaks": {
+        "umnet": 2,
+        "passt-bionic": 1,
+        "linux-bionic": 3
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2621828,
+        "after": 2645100
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "43d28043f52bed9bcb7ee6862f1df3caba7ed1cdffe3f16a59dd562b55e81635",
+        "size": 7401,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.1 avg=2.5 max=3.0 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 6,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 5.622,
+      "peaks": {
+        "umnet": 2,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2645352,
+        "after": 2645616
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "d16c46fd7790402ceb58dbdd280c3a9659f887b56104821c09c0fba420c236ab",
+        "size": 7401,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.4 avg=3.0 max=3.7 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 7,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 5.218,
+      "peaks": {
+        "umnet": 2,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2645112,
+        "after": 2635580
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "e0fd86e07051a728558c924a1818c8d5ca29ea56ffe51df05dddd20418c8f478",
+        "size": 7401,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.4 avg=2.6 max=2.8 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 8,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.643,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [
+        {
+          "pid": 3151,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\necho \"=== soak \u8fdb\u5ea6 ===\"\ntail -12 /tmp/soak-run.log 2>/dev/null | sed 's/^/  /'\necho\necho \"=== \u63d0\u4ea4 defconfig \u6ce8\u91ca\u4fee\u6b63 ===\"\ncd um/repo/src\ngit add arch/um/configs/arm64_defconfig\ngit -c user.name=Raymer8639 -c user.email=diliyangemail@gmail.com commit -q -F - <<'MSG'\num: correct what the 16 KB default is justified by\n\nThe defconfig explained CONFIG_PAGE_SIZE_16KB with \"Android 15 and later ship\n16 KB kernels\". That is not true, and the phone this port is developed against\nis the counterexample: a Redmi 23124RN87C on Android 15 (SDK 35) reports 4 kB,\nfrom KernelPageSize in /proc/self/smaps, and the 16 KB guest boots and runs\nthere -- the full network gate passes on it, recorded in\ndocs/evidence/2026-10-16-umnet-network.json.\n\nThe setting itself is still right, for a reason that does not depend on the\nversion number: the constraint only points one way. A 4 KB guest cannot boot on\na 16 KB host; a 16 KB guest boots on either. So 16 KB remains the default, and\nthe comment now says that instead of repeating a claim a device can falsify.\n\nNo functional change.\nMSG\ngit log --oneline -1",
+          "starttime": 81860862,
+          "rss-kb": 3540,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2635580,
+        "after": 2582124
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "843eaddc6d7f04eca0aefcaf909ef752e52e0f7cf7f8d4008272515b8646e07f",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.2 avg=2.7 max=4.3 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 9,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 5.157,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 3
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2582124,
+        "after": 2591264
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "beb61524cdfc0b828ddf1b68f92a18655a509f11c0d5df31220dd71502559870",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.6 avg=3.0 max=4.3 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 10,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.955,
+      "peaks": {
+        "umnet": 2,
+        "passt-bionic": 1,
+        "linux-bionic": 3
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2591264,
+        "after": 2595268
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "0d5980444a3e43ba3421c12af3be97a7e75d282f41f83b72fd883bdeb34fb557",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.3 avg=3.7 max=5.0 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 11,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 5.172,
+      "peaks": {
+        "umnet": 2,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2595268,
+        "after": 2590628
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "8bc4ae86ddedaa0fda643b2988f415bf199454168aeadc3a6be18a36a6ca1704",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.6 avg=3.3 max=4.0 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 12,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 5.015,
+      "peaks": {
+        "umnet": 2,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2590628,
+        "after": 2593824
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "8db5bb433f68d45dd94e1712538a6cd4635739881c94db2a200d217a1ad8d5e9",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.8 avg=2.8 max=2.8 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 13,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.907,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2593824,
+        "after": 2586580
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "2d1cb474abd625c97d9d4a2a890f1ebdaa2cb883d2545a766d75b928cb8ba7c7",
+        "size": 7401,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=3.5 avg=4.9 max=6.3 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 14,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 5.166,
+      "peaks": {
+        "umnet": 4,
+        "passt-bionic": 1,
+        "linux-bionic": 3
+      },
+      "leaked": [
+        {
+          "pid": 4716,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+          "starttime": 81865975,
+          "rss-kb": 3420,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2586580,
+        "after": 2565536
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "156d7e2c46a10c1eb05829eeb7b1ccb60cd1a725fec40578df6926dab8a0be22",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.0 avg=3.3 max=4.5 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 15,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.751,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [
+        {
+          "pid": 4716,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+          "starttime": 81865975,
+          "rss-kb": 3420,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2565744,
+        "after": 2579600
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "db4cb85cfc5857160dc9e52d73d8299af9f5a5cca6ca99720b30e362230661ef",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.8 avg=5.7 max=9.5 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 16,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.909,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [
+        {
+          "pid": 4716,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+          "starttime": 81865975,
+          "rss-kb": 3420,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2579600,
+        "after": 2600320
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "dcf4c93227568c504c0f940ac6b17340f118f55767fc6ef2aff3e3c485486cf1",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=2.3 avg=3.0 max=3.7 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 17,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.914,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [
+        {
+          "pid": 4716,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+          "starttime": 81865975,
+          "rss-kb": 3420,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2600320,
+        "after": 2595804
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "1a5fa10456e6f44e66e5f71c60684ccd18d1fe918018467347a77f696268669e",
+        "size": 7463,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=0.9 avg=1.6 max=2.3 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 18,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.752,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [
+        {
+          "pid": 4716,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+          "starttime": 81865975,
+          "rss-kb": 3420,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2595804,
+        "after": 2590208
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "f21773f41a65044df992677d817e20aac2f6915acc19ddef6a5412ee306e688c",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.5 avg=1.6 max=1.8 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 19,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.951,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [
+        {
+          "pid": 4716,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+          "starttime": 81865975,
+          "rss-kb": 3420,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2590208,
+        "after": 2588104
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "490a3e8882e453fa84ae31d1b60ff6507107a4cf6562149b00d1fe6446873846",
+        "size": 7400,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.8 avg=2.3 max=2.7 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    },
+    {
+      "round": 20,
+      "verdict": "PASS",
+      "exit-code": 0,
+      "timed-out": false,
+      "seconds": 4.902,
+      "peaks": {
+        "umnet": 3,
+        "passt-bionic": 1,
+        "linux-bionic": 2
+      },
+      "leaked": [
+        {
+          "pid": 4716,
+          "ppid": 10463,
+          "comm": "bash",
+          "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+          "starttime": 81865975,
+          "rss-kb": 3536,
+          "in-gate-tree": true
+        }
+      ],
+      "killed-tree": [],
+      "mem-available-kb": {
+        "before": 2588104,
+        "after": 2581060
+      },
+      "log": {
+        "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+        "sha256": "876cf5afc95340cd44a0811653e1d1e34e1b79f5e9c6d347644b6f60503e5680",
+        "size": 7464,
+        "stale": false
+      },
+      "stderr-tail": [
+        "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+        "gate: dhcp         ok",
+        "gate: addr         ok",
+        "gate: route        ok",
+        "gate: dns-config   ok",
+        "gate: icmp         ok",
+        "gate: dns-lookup   ok",
+        "gate: tcp          ok",
+        "gate: concurrent   ok",
+        "gate: clean-exit   ok",
+        "gate: icmp rtt ms: min=1.2 avg=2.3 max=3.4 (n=2)",
+        "gate: teardown: no passt teardown line",
+        "verdict=PASS",
+        "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 20,
+    "FAIL": 0,
+    "SKIP": 0
+  },
+  "coverage": {
+    "rounds-requested": 20,
+    "rounds-run": 20,
+    "minutes-requested": 0,
+    "minutes-run": 2.673,
+    "rounds-met": true,
+    "minutes-met": false,
+    "met": true
+  },
+  "leaked-processes": [
+    {
+      "round": 8,
+      "process": {
+        "pid": 3151,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\necho \"=== soak \u8fdb\u5ea6 ===\"\ntail -12 /tmp/soak-run.log 2>/dev/null | sed 's/^/  /'\necho\necho \"=== \u63d0\u4ea4 defconfig \u6ce8\u91ca\u4fee\u6b63 ===\"\ncd um/repo/src\ngit add arch/um/configs/arm64_defconfig\ngit -c user.name=Raymer8639 -c user.email=diliyangemail@gmail.com commit -q -F - <<'MSG'\num: correct what the 16 KB default is justified by\n\nThe defconfig explained CONFIG_PAGE_SIZE_16KB with \"Android 15 and later ship\n16 KB kernels\". That is not true, and the phone this port is developed against\nis the counterexample: a Redmi 23124RN87C on Android 15 (SDK 35) reports 4 kB,\nfrom KernelPageSize in /proc/self/smaps, and the 16 KB guest boots and runs\nthere -- the full network gate passes on it, recorded in\ndocs/evidence/2026-10-16-umnet-network.json.\n\nThe setting itself is still right, for a reason that does not depend on the\nversion number: the constraint only points one way. A 4 KB guest cannot boot on\na 16 KB host; a 16 KB guest boots on either. So 16 KB remains the default, and\nthe comment now says that instead of repeating a claim a device can falsify.\n\nNo functional change.\nMSG\ngit log --oneline -1",
+        "starttime": 81860862,
+        "rss-kb": 3540,
+        "in-gate-tree": true
+      }
+    },
+    {
+      "round": 14,
+      "process": {
+        "pid": 4716,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+        "starttime": 81865975,
+        "rss-kb": 3420,
+        "in-gate-tree": true
+      }
+    },
+    {
+      "round": 15,
+      "process": {
+        "pid": 4716,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+        "starttime": 81865975,
+        "rss-kb": 3420,
+        "in-gate-tree": true
+      }
+    },
+    {
+      "round": 16,
+      "process": {
+        "pid": 4716,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+        "starttime": 81865975,
+        "rss-kb": 3420,
+        "in-gate-tree": true
+      }
+    },
+    {
+      "round": 17,
+      "process": {
+        "pid": 4716,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+        "starttime": 81865975,
+        "rss-kb": 3420,
+        "in-gate-tree": true
+      }
+    },
+    {
+      "round": 18,
+      "process": {
+        "pid": 4716,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+        "starttime": 81865975,
+        "rss-kb": 3420,
+        "in-gate-tree": true
+      }
+    },
+    {
+      "round": 19,
+      "process": {
+        "pid": 4716,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+        "starttime": 81865975,
+        "rss-kb": 3420,
+        "in-gate-tree": true
+      }
+    },
+    {
+      "round": 20,
+      "process": {
+        "pid": 4716,
+        "ppid": 10463,
+        "comm": "bash",
+        "cmdline": "bash -c cd /home/Raymer/work_space\nfor i in 1 2 3 4 5 6; do\n  if ! pgrep -f \"soak-umnet.py\" >/dev/null 2>&1; then echo \"soak \u5df2\u7ed3\u675f\uff08\u7b2c $i \u6b21\u68c0\u67e5\uff09\"; break; fi\n  sleep 50\ndone\necho\necho \"=== soak \u5b8c\u6574\u7ed3\u679c ===\"\ncat /tmp/soak-run.log 2>/dev/null | grep -v \"password\" | tail -30",
+        "starttime": 81865975,
+        "rss-kb": 3536,
+        "in-gate-tree": true
+      }
+    }
+  ],
+  "seconds": {
+    "min": 4.643,
+    "max": 5.622,
+    "avg": 4.979
+  },
+  "memory-available-kb": {
+    "first": 2607732,
+    "last": 2581060,
+    "delta": -26672
+  },
+  "started": "2026-10-16T23:47:36Z",
+  "gate": {
+    "path": "tools/um-arm64/harness/test-umnet-network.sh",
+    "argv": [],
+    "timeout-s": 300,
+    "dns": "1.1.1.1"
+  },
+  "watch-tokens": [
+    "umnet",
+    "passt-bionic",
+    "linux-bionic"
+  ],
+  "settle-s": 3,
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "components": {
+    "linux-bionic": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-arm64/new/linux-bionic",
+      "sha256": "dd389053e6dae9d75fbead54654b8946379cac220dae5f5ab521b32c8bb948bc",
+      "size": 88428936,
+      "executable": true
+    },
+    "stub_exe": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-arm64/new/stub_exe",
+      "sha256": "731c48d5bf42ef25e26625af6a02627a5d658bf9f67d6f7fc443d6d644d6e52e",
+      "size": 2000,
+      "executable": true
+    },
+    "umnet": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-network/umnet",
+      "sha256": "4b32ff453402d522775cb1661d79b634e661476a89ba43d738c3c9498b6397cb",
+      "size": 2166376,
+      "executable": true
+    },
+    "passt-bionic": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-network/passt-bionic",
+      "sha256": "289aa0c00e99f6264b63947f2f9742cd247baee3ebf14ff89b5bb01fa9ddd752",
+      "size": 2708792,
+      "executable": true
+    }
+  },
+  "not-verified": [
+    "processes leaked during the soak; see leaked-processes",
+    "a clean soak is not proof of no leak: it covers the requested window only",
+    "MemAvailable moves with every other app on the phone; the delta is evidence, not a criterion",
+    "the soak repeats one gate with one work directory; it does not vary network conditions, DNS or link speed",
+    "IPv6, ext4/COW rootfs and fault injection are covered elsewhere (or not at all) -- see docs/evidence/README.md",
+    "the round list is a sample of wall-clock time, not of device states (doze, thermal throttling, low battery)",
+    "a leak is judged by process name and start time: another process on the phone whose command line matches a watched token and that started during a round would be counted too"
+  ]
+}

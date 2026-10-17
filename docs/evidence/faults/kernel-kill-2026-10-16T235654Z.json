@@ -1,0 +1,207 @@
+{
+  "fault-format": 1,
+  "kind": "umnet-network-fault-injection",
+  "scenario": "kernel-kill",
+  "synthetic": false,
+  "recorded": "2026-10-16T23:56:54Z",
+  "verdict": "FAIL",
+  "criteria": [
+    {
+      "id": "c1-injected-live",
+      "description": "the UML process was killed while the run was live",
+      "ok": false,
+      "evidence": "the UML process was already gone",
+      "required": true
+    },
+    {
+      "id": "c2-run-ended",
+      "description": "the run ended by itself within 90s of the injection",
+      "ok": true,
+      "evidence": "ended 23.3s into the run",
+      "required": true
+    },
+    {
+      "id": "c3-no-false-pass",
+      "description": "a run whose link or guest was destroyed does not report PASS",
+      "ok": false,
+      "evidence": "gate verdict=PASS",
+      "required": true
+    },
+    {
+      "id": "c4-no-survivors",
+      "description": "no umnet/passt/UML process survived the run",
+      "ok": false,
+      "evidence": "survivors: [{'pid': 6514, 'ppid': 10463, 'comm': 'bash', 'cmdline': 'bash -c cd /home/Raymer/work_space\\ntimeout 1200 python3 /tmp/ssh_exec.py <<\\'REMOTE\\' 2>&1 | tail -40\\ncd \"$HOME\" || cd /\\nsrc=\"$PREFIX/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src\"\\ncd \"$src\" || exit 1\\nfor sc in link-drop kernel-kill guest-panic; do\\n  echo \"\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 scenario=$sc \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\"\\n  timeout 300 python3 tools/um-arm64/harness/inject-faults.py --scenario \"$sc\" \\\\\\n    --workdir \"$PREFIX/tmp/um-network\" 2>&1 | tail -10\\n  echo \"  (rc=$?)\"\\ndone\\necho\\necho \"=== \u8dd1\u5b8c\u540e\u6b8b\u7559\u68c0\u67e5 ===\"\\nfor d in /proc/[0-9]*; do\\n  c=$(cat \"$d/comm\" 2>/dev/null) || continue\\n  case \"$c\" in linux-bionic|passt-bionic|umnet) echo \"  \u6b8b\u7559: pid=${d#/proc/} $c\";; esac\\ndone\\necho \"  ~/.uml: $(ls -1A ~/.uml | wc -l)\"\\nREMOTE', 'starttime': 81906142, 'rss-kb': 3420}]",
+      "required": true
+    }
+  ],
+  "run": {
+    "argv": [
+      "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src/tools/um-arm64/harness/test-umnet-network.sh",
+      "--workdir",
+      "/data/data/com.termux/files/usr/tmp/um-network",
+      "--log",
+      "net-gate.log",
+      "--timeout",
+      "300",
+      "--dns",
+      "1.1.1.1"
+    ],
+    "exit-code": 0,
+    "timed-out": false,
+    "killed-tree": [],
+    "seconds": 23.263,
+    "verdict-line": "PASS",
+    "checks": [
+      {
+        "name": "dhcp",
+        "status": "ok"
+      },
+      {
+        "name": "addr",
+        "status": "ok"
+      },
+      {
+        "name": "route",
+        "status": "ok"
+      },
+      {
+        "name": "dns-config",
+        "status": "ok"
+      },
+      {
+        "name": "icmp",
+        "status": "ok"
+      },
+      {
+        "name": "dns-lookup",
+        "status": "ok"
+      },
+      {
+        "name": "tcp",
+        "status": "ok"
+      },
+      {
+        "name": "concurrent",
+        "status": "ok"
+      },
+      {
+        "name": "clean-exit",
+        "status": "ok"
+      }
+    ],
+    "teardown": "no passt teardown line",
+    "stderr-tail": [
+      "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+      "gate: dhcp         ok",
+      "gate: addr         ok",
+      "gate: route        ok",
+      "gate: dns-config   ok",
+      "gate: icmp         ok",
+      "gate: dns-lookup   ok",
+      "gate: tcp          ok",
+      "gate: concurrent   ok",
+      "gate: clean-exit   ok",
+      "gate: icmp rtt ms: min=1.1 avg=3.7 max=6.3 (n=2)",
+      "gate: teardown: no passt teardown line",
+      "verdict=PASS",
+      "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+    ]
+  },
+  "survivors": [
+    {
+      "pid": 6514,
+      "ppid": 10463,
+      "comm": "bash",
+      "cmdline": "bash -c cd /home/Raymer/work_space\ntimeout 1200 python3 /tmp/ssh_exec.py <<'REMOTE' 2>&1 | tail -40\ncd \"$HOME\" || cd /\nsrc=\"$PREFIX/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src\"\ncd \"$src\" || exit 1\nfor sc in link-drop kernel-kill guest-panic; do\n  echo \"\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 scenario=$sc \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\"\n  timeout 300 python3 tools/um-arm64/harness/inject-faults.py --scenario \"$sc\" \\\n    --workdir \"$PREFIX/tmp/um-network\" 2>&1 | tail -10\n  echo \"  (rc=$?)\"\ndone\necho\necho \"=== \u8dd1\u5b8c\u540e\u6b8b\u7559\u68c0\u67e5 ===\"\nfor d in /proc/[0-9]*; do\n  c=$(cat \"$d/comm\" 2>/dev/null) || continue\n  case \"$c\" in linux-bionic|passt-bionic|umnet) echo \"  \u6b8b\u7559: pid=${d#/proc/} $c\";; esac\ndone\necho \"  ~/.uml: $(ls -1A ~/.uml | wc -l)\"\nREMOTE",
+      "starttime": 81906142,
+      "rss-kb": 3420
+    }
+  ],
+  "guest-log": {
+    "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+    "sha256": "e8715fa7e51f5ab878b1ea30990216570cfb18f0bece4f2b70bde0ede477a490",
+    "size": 7400,
+    "lines": 160,
+    "panic-observed": false,
+    "panic-not-triggered": false,
+    "clean-guest-exit": true,
+    "excerpt": {
+      "head": [
+        "umnet: announcing nameserver 1.1.1.1 (--dns)",
+        "Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+        "MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host 127.0.0.1: 10.0.2.2",
+        "DHCP:",
+        "    assign: 10.0.2.15",
+        "    mask: 255.255.255.0",
+        "    router: 10.0.2.2",
+        "DNS:",
+        "    1.1.1.1",
+        "Inbound forwarding rules (HOST):"
+      ],
+      "tail": [
+        "Address: 172.66.147.243",
+        "",
+        "Non-authoritative answer:",
+        "Name:\texample.com",
+        "Address: 2606:4700:10::ac42:93f3",
+        "Name:\texample.com",
+        "Address: 2606:4700:10::6814:179a",
+        "",
+        "NET_TCP",
+        "Connecting to example.com (104.20.23.154:80)",
+        "writing to stdout",
+        "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Example Domain</title><style>html{color-scheme:light dark;background:light-dark(#eee,#222)}body{font:16px/1.6 system-ui,sans-serif;max-width:26em;margin:auto;padding:25vh 2em 2em;text-align:center}</style></head><body><p>This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.</p><script src=/s.js></script></body></html>",
+        "NET_TCP_DONE",
+        "NET_CONCURRENT",
+        "NET_CONCURRENT_RC=0",
+        "NET_LATENCY",
+        "time=1.786",
+        "time=2.097",
+        "time=1.030",
+        "time=7.030",
+        "time=1.008",
+        "NET_DONE",
+        "UM_NET_COMMAND_EXIT=0",
+        "reboot: Power down",
+        ""
+      ]
+    }
+  },
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "not-verified": [
+    "a fault injection exercises one failure at one moment; it does not prove the bridge handles every failure mode",
+    "link-drop kills passt, which is the closest a non-root Termux process gets to dropping the host link; radio handover and interface-down are not reproducible here",
+    "guest-panic needs CONFIG_MAGIC_SYSRQ and a writable /proc/sysrq-trigger in the guest; PANIC_NOT_TRIGGERED in the log means the trigger never reached the kernel",
+    "the panic scenario boots a copy of the rootfs and its own command line; it does not prove the release gate's own arguments are right",
+    "timing is wall-clock, not deterministic: the fault is injected a fixed delay after the UML process appears",
+    "the survivor check is global: another process on the phone whose command line matches a watched token (a second harness run, say) is reported as a survivor too; run device gates one at a time"
+  ],
+  "notes": [],
+  "exit-code": 1,
+  "message": "kernel-kill: c1-injected-live; c3-no-false-pass; c4-no-survivors",
+  "injection": {
+    "target": "linux-bionic",
+    "signal": "SIGKILL",
+    "injected": false,
+    "pid": null,
+    "at-seconds": null,
+    "cmdline": null
+  }
+}

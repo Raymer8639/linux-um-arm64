@@ -1,0 +1,215 @@
+{
+  "fault-format": 1,
+  "kind": "umnet-network-fault-injection",
+  "scenario": "link-drop",
+  "synthetic": false,
+  "recorded": "2026-10-16T23:59:45Z",
+  "verdict": "FAIL",
+  "criteria": [
+    {
+      "id": "c1-injected-live",
+      "description": "the fault was injected while the run was live",
+      "ok": false,
+      "evidence": "no passt-bionic process in the run's tree after 20s (run alive=False)",
+      "required": true
+    },
+    {
+      "id": "c2-run-ended",
+      "description": "the run ended by itself within 90s of the injection",
+      "ok": true,
+      "evidence": "ended 23.2s into the run",
+      "required": true
+    },
+    {
+      "id": "c3-no-false-pass",
+      "description": "a run whose link or guest was destroyed does not report PASS",
+      "ok": false,
+      "evidence": "gate verdict=PASS",
+      "required": true
+    },
+    {
+      "id": "c4-no-survivors",
+      "description": "no umnet/passt/UML process survived the run",
+      "ok": false,
+      "evidence": "survivors: [{'pid': 7392, 'ppid': 10463, 'comm': 'bash', 'cmdline': 'bash -c cd /home/Raymer/work_space\\ntimeout 900 python3 /tmp/ssh_exec.py <<\\'REMOTE\\' 2>&1 | tail -16\\ncd \"$HOME\" || cd /\\nsrc=\"$PREFIX/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src\"\\ncd \"$src\" || exit 1\\nb0=$(ls -1A ~/.uml | wc -l)\\necho \"  \u8d77\u59cb ~/.uml: $b0\"\\necho \"--- 1) \u6b63\u5e38 gate ---\"\\npython3 tools/um-arm64/harness/test-umnet-network.sh --workdir \"$PREFIX/tmp/um-network\" --timeout 180 > \"$PREFIX/tmp/g1.log\" 2>&1\\necho \"  rc=$? $(grep -a \\'^verdict\\' \"$PREFIX/tmp/g1.log\" | tail -1)  ~/.uml=$(ls -1A ~/.uml | wc -l)\"\\necho \"--- 2) link-drop \u6ce8\u5165\uff08\u4f1a\u6740\u6389 passt\uff0cgate \u7684 finally \u5f3a\u6740\u8fdb\u7a0b\u7ec4\uff09 ---\"\\npython3 tools/um-arm64/harness/inject-faults.py --scenario link-drop --workdir \"$PREFIX/tmp/um-network\" > \"$PREFIX/tmp/g2.log\" 2>&1\\necho \"  rc=$?  ~/.uml=$(ls -1A ~/.uml | wc -l)\"\\ngrep -aE \"scenario=|verdict=\" \"$PREFIX/tmp/g2.log\" | head -3 | sed \\'s/^/    /\\'\\necho \"--- 3) kernel-kill \u6ce8\u5165 ---\"\\npython3 tools/um-arm64/harness/inject-faults.py --scenario kernel-kill --workdir \"$PREFIX/tmp/um-network\" > \"$PREFIX/tmp/g3.log\" 2>&1\\necho \"  ~/.uml=$(ls -1A ~/.uml | wc -l)\"\\necho\\necho \"  \u6700\u7ec8 ~/.uml: $(ls -1A ~/.uml | wc -l)  (\u8d77\u59cb $b0)\"\\nREMOTE', 'starttime': 81925097, 'rss-kb': 3388}]",
+      "required": true
+    },
+    {
+      "id": "c5-link-loss-visible",
+      "description": "the run's own output shows the bridge noticing the link going away (informational: absence is worth investigating, not automatically a failure)",
+      "ok": false,
+      "evidence": "no passt-death line in the run output",
+      "required": false
+    }
+  ],
+  "run": {
+    "argv": [
+      "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src/tools/um-arm64/harness/test-umnet-network.sh",
+      "--workdir",
+      "/data/data/com.termux/files/usr/tmp/um-network",
+      "--log",
+      "net-gate.log",
+      "--timeout",
+      "300",
+      "--dns",
+      "1.1.1.1"
+    ],
+    "exit-code": 0,
+    "timed-out": false,
+    "killed-tree": [],
+    "seconds": 23.245,
+    "verdict-line": "PASS",
+    "checks": [
+      {
+        "name": "dhcp",
+        "status": "ok"
+      },
+      {
+        "name": "addr",
+        "status": "ok"
+      },
+      {
+        "name": "route",
+        "status": "ok"
+      },
+      {
+        "name": "dns-config",
+        "status": "ok"
+      },
+      {
+        "name": "icmp",
+        "status": "ok"
+      },
+      {
+        "name": "dns-lookup",
+        "status": "ok"
+      },
+      {
+        "name": "tcp",
+        "status": "ok"
+      },
+      {
+        "name": "concurrent",
+        "status": "ok"
+      },
+      {
+        "name": "clean-exit",
+        "status": "ok"
+      }
+    ],
+    "teardown": "no passt teardown line",
+    "stderr-tail": [
+      "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+      "gate: dhcp         ok",
+      "gate: addr         ok",
+      "gate: route        ok",
+      "gate: dns-config   ok",
+      "gate: icmp         ok",
+      "gate: dns-lookup   ok",
+      "gate: tcp          ok",
+      "gate: concurrent   ok",
+      "gate: clean-exit   ok",
+      "gate: icmp rtt ms: min=2.1 avg=3.8 max=5.5 (n=2)",
+      "gate: teardown: no passt teardown line",
+      "verdict=PASS",
+      "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+    ]
+  },
+  "survivors": [
+    {
+      "pid": 7392,
+      "ppid": 10463,
+      "comm": "bash",
+      "cmdline": "bash -c cd /home/Raymer/work_space\ntimeout 900 python3 /tmp/ssh_exec.py <<'REMOTE' 2>&1 | tail -16\ncd \"$HOME\" || cd /\nsrc=\"$PREFIX/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src\"\ncd \"$src\" || exit 1\nb0=$(ls -1A ~/.uml | wc -l)\necho \"  \u8d77\u59cb ~/.uml: $b0\"\necho \"--- 1) \u6b63\u5e38 gate ---\"\npython3 tools/um-arm64/harness/test-umnet-network.sh --workdir \"$PREFIX/tmp/um-network\" --timeout 180 > \"$PREFIX/tmp/g1.log\" 2>&1\necho \"  rc=$? $(grep -a '^verdict' \"$PREFIX/tmp/g1.log\" | tail -1)  ~/.uml=$(ls -1A ~/.uml | wc -l)\"\necho \"--- 2) link-drop \u6ce8\u5165\uff08\u4f1a\u6740\u6389 passt\uff0cgate \u7684 finally \u5f3a\u6740\u8fdb\u7a0b\u7ec4\uff09 ---\"\npython3 tools/um-arm64/harness/inject-faults.py --scenario link-drop --workdir \"$PREFIX/tmp/um-network\" > \"$PREFIX/tmp/g2.log\" 2>&1\necho \"  rc=$?  ~/.uml=$(ls -1A ~/.uml | wc -l)\"\ngrep -aE \"scenario=|verdict=\" \"$PREFIX/tmp/g2.log\" | head -3 | sed 's/^/    /'\necho \"--- 3) kernel-kill \u6ce8\u5165 ---\"\npython3 tools/um-arm64/harness/inject-faults.py --scenario kernel-kill --workdir \"$PREFIX/tmp/um-network\" > \"$PREFIX/tmp/g3.log\" 2>&1\necho \"  ~/.uml=$(ls -1A ~/.uml | wc -l)\"\necho\necho \"  \u6700\u7ec8 ~/.uml: $(ls -1A ~/.uml | wc -l)  (\u8d77\u59cb $b0)\"\nREMOTE",
+      "starttime": 81925097,
+      "rss-kb": 3388
+    }
+  ],
+  "guest-log": {
+    "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+    "sha256": "c348784fc7ec582e904928f37250e6226d79368ceaea051d1bc971047d592555",
+    "size": 7401,
+    "lines": 160,
+    "panic-observed": false,
+    "panic-not-triggered": false,
+    "clean-guest-exit": true,
+    "excerpt": {
+      "head": [
+        "umnet: announcing nameserver 1.1.1.1 (--dns)",
+        "Address space: host top 0x8000000000, stub at 0x7fffff4000, guest TASK_SIZE 0x7fc0000000",
+        "Core dump limits :",
+        "\tsoft - 0",
+        "\thard - NONE",
+        "Stub signal stack: 16384 bytes, host AT_MINSIGSTKSZ 4720",
+        "Checking environment variables for a tempdir.../data/data/com.termux/files/usr/tmp",
+        "Checking if /data/data/com.termux/files/usr/tmp is on tmpfs...no",
+        "Warning: tempdir /data/data/com.termux/files/usr/tmp is not on tmpfs",
+        "Checking PROT_EXEC mmap in /data/data/com.termux/files/usr/tmp...OK",
+        "Checking the stub's cycle counter...Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+        "MAC:"
+      ],
+      "tail": [
+        "Address: 172.66.147.243",
+        "",
+        "Non-authoritative answer:",
+        "Name:\texample.com",
+        "Address: 2606:4700:10::6814:179a",
+        "Name:\texample.com",
+        "Address: 2606:4700:10::ac42:93f3",
+        "",
+        "NET_TCP",
+        "Connecting to example.com (104.20.23.154:80)",
+        "writing to stdout",
+        "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Example Domain</title><style>html{color-scheme:light dark;background:light-dark(#eee,#222)}body{font:16px/1.6 system-ui,sans-serif;max-width:26em;margin:auto;padding:25vh 2em 2em;text-align:center}</style></head><body><p>This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.</p><script src=/s.js></script></body></html>",
+        "NET_TCP_DONE",
+        "NET_CONCURRENT",
+        "NET_CONCURRENT_RC=0",
+        "NET_LATENCY",
+        "time=12.116",
+        "time=1.602",
+        "time=1.845",
+        "time=1.334",
+        "time=1.526",
+        "NET_DONE",
+        "UM_NET_COMMAND_EXIT=0",
+        "reboot: Power down",
+        ""
+      ]
+    }
+  },
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "not-verified": [
+    "the link was never dropped: the injection point was not reached, so nothing about link loss was measured",
+    "a fault injection exercises one failure at one moment; it does not prove the bridge handles every failure mode",
+    "link-drop kills passt, which is the closest a non-root Termux process gets to dropping the host link; radio handover and interface-down are not reproducible here",
+    "guest-panic needs CONFIG_MAGIC_SYSRQ and a writable /proc/sysrq-trigger in the guest; PANIC_NOT_TRIGGERED in the log means the trigger never reached the kernel",
+    "the panic scenario boots a copy of the rootfs and its own command line; it does not prove the release gate's own arguments are right",
+    "timing is wall-clock, not deterministic: the fault is injected a fixed delay after the UML process appears",
+    "the survivor check is global: another process on the phone whose command line matches a watched token (a second harness run, say) is reported as a survivor too; run device gates one at a time"
+  ],
+  "notes": [],
+  "exit-code": 1,
+  "message": "link-drop: c1-injected-live; c3-no-false-pass; c4-no-survivors",
+  "injection": {
+    "target": "passt-bionic",
+    "signal": "SIGKILL",
+    "injected": false,
+    "pid": null,
+    "at-seconds": null,
+    "cmdline": null
+  }
+}

@@ -176,6 +176,24 @@ Setup it expects:
 | `<workdir>/passt-bionic` | passt built for Android 30 |
 | `<workdir>/umnet` | bridge built from `harness/umnet.c` |
 | `<workdir>/netroot` | Alpine hostfs root |
+| `<workdir>/netroot/um-init` | the guest's init; copy `harness/netroot-um-init.sh` in |
+
+The last row is easy to miss, because the kernel does not say "a file is
+missing from the rootfs". It says:
+
+```
+Kernel panic - not syncing: Requested init /um-init failed (error -2).
+```
+
+which reads like a kernel fault and is `ENOENT` for a path inside the root the
+gate handed to `rootfstype=hostfs`. The gate writes `net-command.sh` itself but
+expects the init that calls it to be part of the root, so a root assembled from
+a stock Alpine minirootfs boots straight into that panic. Copy the script in and
+make it executable:
+
+```sh
+install -m 755 harness/netroot-um-init.sh <workdir>/netroot/um-init
+```
 
 The guest command script is written by the gate itself, so the checks and the
 commands that produce them cannot drift apart. Five consecutive runs pass with

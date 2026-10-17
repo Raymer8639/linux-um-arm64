@@ -31,6 +31,10 @@ import time
 
 PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
 
+# Exit code convention shared with harness/boot.py and verify-release.py: 77
+# means "could not be attempted", never "good enough".
+EXIT_SKIP = 77
+
 # The guest command script.  Written by this gate into the hostfs root so the
 # measured behaviour lives in one place rather than in an ad-hoc shell snippet.
 GUEST_COMMAND = """#!/bin/sh
@@ -78,6 +82,20 @@ exit 0
 def fail(message):
     print("gate: " + message, file=sys.stderr)
     raise SystemExit(1)
+
+
+def skip(message):
+    """The gate cannot be attempted here, so it judges nothing.
+
+    Missing assets or a traced container are facts about the environment, not
+    about the build.  Reporting them as FAIL would hide the difference between
+    "this is broken" and "this was never tested", which is exactly the
+    difference a release record has to keep.  Exit 77 is the harness-wide
+    convention for it (see docs/RELEASE.md).
+    """
+    print("gate: " + message, file=sys.stderr)
+    print("verdict=SKIP", file=sys.stderr)
+    raise SystemExit(EXIT_SKIP)
 
 
 def write_guest_command(netroot):
@@ -142,29 +160,85 @@ def run_on_pty(cmd, timeout):
     return completed, bytes(log)
 
 
+def uml_runtime_dirs():
+    """Names of the umid directories under $HOME/.uml, as a set."""
+    try:
+        return set(os.listdir(os.path.join(os.path.expanduser("~"), ".uml")))
+    except OSError:
+        return set()
+
+
+def remove_new_uml_dirs(before):
+    """Remove umid directories this run created and then abandoned.
+
+    The kernel removes its own umid directory, but only on the shutdown path --
+    an exitcall that runs when the guest powers off.  This gate kills the
+    process group in its cleanup, so any run that did not power off under its
+    own steam leaves the directory behind: a timeout, or a fault-injection
+    scenario that killed something on purpose.  They accumulate quietly; fifty
+    of them had built up on the phone this was written for.
+
+    Only directories that appeared during this run are candidates, and of those
+    only the ones whose pid file names a process that is already gone, so a
+    second UML running at the same time is never disturbed.
+    """
+    uml = os.path.join(os.path.expanduser("~"), ".uml")
+    for name in uml_runtime_dirs() - before:
+        directory = os.path.join(uml, name)
+        alive = True
+        try:
+            with open(os.path.join(directory, "pid"), encoding="ascii") as handle:
+                pid = int(handle.read().strip())
+            os.kill(pid, 0)
+        except (OSError, ValueError):
+            # No pid file, an unreadable one, or a pid that is gone: either way
+            # nothing owns this directory any more.
+            alive = False
+        if alive:
+            continue
+        for entry in ("mconsole", "pid"):
+            try:
+                os.unlink(os.path.join(directory, entry))
+            except OSError:
+                pass
+        try:
+            os.rmdir(directory)
+        except OSError:
+            pass
+
+
 def run_gate(args):
     umnet = os.path.join(args.workdir, "umnet")
     passt = os.path.join(args.workdir, "passt-bionic")
-    netroot = os.path.join(args.workdir, "netroot")
+    netroot = args.netroot or os.path.join(args.workdir, "netroot")
     kernel = os.path.join(PREFIX, "tmp/um-arm64/new/linux-bionic")
     stub = os.path.join(PREFIX, "tmp/um-arm64/new/stub_exe")
 
     for path in (umnet, passt, kernel, stub):
         if not os.path.isfile(path) or not os.access(path, os.X_OK):
-            fail("not an executable file: " + path)
+            skip("not an executable file: " + path)
     if not os.path.isdir(netroot):
-        fail("missing hostfs root: " + netroot)
+        skip("missing hostfs root: " + netroot)
 
-    write_guest_command(netroot)
+    if not args.keep_guest_command:
+        write_guest_command(netroot)
     log_path = os.path.join(args.workdir, args.log)
-    cmd = [umnet, "--passt", passt, "--dns", args.dns, "--", kernel,
+    cmd = [umnet, "--passt", passt]
+    if args.passt_pid_file:
+        # Where the bridge writes the helper's pid.  Needed because the helper
+        # cannot be found by looking: it is a live same-uid process that /proc
+        # does not list on this platform, while kill(pid, 0) works.
+        cmd += ["--passt-pid-file", args.passt_pid_file]
+    cmd += ["--dns", args.dns, "--", kernel,
            "mem=512M", "rw", "init=/um-init", "con=null", "con0=fd:0,fd:1",
            "stub_exe=" + stub, "rootfstype=hostfs", "rootflags=" + netroot,
            "panic=1"]
     print("gate: running on pty, timeout=%ss, announced dns=%s"
           % (args.timeout, args.dns), file=sys.stderr)
 
+    uml_dirs_before = uml_runtime_dirs()
     completed, raw = run_on_pty(cmd, args.timeout)
+    remove_new_uml_dirs(uml_dirs_before)
     text = raw.decode("utf-8", errors="replace").replace("\r", "")
     with open(log_path, "w", encoding="utf-8") as handle:
         handle.write(text)
@@ -222,6 +296,14 @@ def main():
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--check-host-only", action="store_true",
                         help="verify the host is untraced and assets exist")
+    parser.add_argument("--netroot", default=None,
+                        help="hostfs root to boot instead of <workdir>/netroot, "
+                             "for a caller that prepared its own guest command")
+    parser.add_argument("--keep-guest-command", action="store_true",
+                        help="do not rewrite net-command.sh in the hostfs root")
+    parser.add_argument("--passt-pid-file", default=None,
+                        help="ask the bridge to write the helper's pid here, "
+                             "so a caller can signal it")
     parser.add_argument("--dns", default="1.1.1.1",
                         help="nameserver passt announces to the guest (default: "
                              "1.1.1.1).  Some networks block plain DNS to "
@@ -235,14 +317,20 @@ def main():
     with open("/proc/self/status", encoding="ascii") as status_file:
         for line in status_file:
             if line.startswith("TracerPid:") and int(line.split()[1]):
-                fail("run on the Termux host, not inside a traced container")
+                skip("run on the Termux host, not inside a traced container")
 
     if args.check_host_only:
+        missing = []
         for name in ("umnet", "passt-bionic"):
             path = os.path.join(args.workdir, name)
-            print("%-14s %s" % (name, "present" if os.path.isfile(path)
-                                else "MISSING"))
-        return 0
+            present = os.path.isfile(path)
+            print("%-14s %s" % (name, "present" if present else "MISSING"))
+            if not present:
+                missing.append(name)
+        # An asset check is a readiness question, so answer it in the same
+        # vocabulary the gate uses for the same situation.
+        print("verdict=" + ("SKIP" if missing else "PASS"), file=sys.stderr)
+        return EXIT_SKIP if missing else 0
 
     return run_gate(args)
 

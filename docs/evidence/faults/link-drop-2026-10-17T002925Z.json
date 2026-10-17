@@ -1,0 +1,206 @@
+{
+  "fault-format": 1,
+  "kind": "umnet-network-fault-injection",
+  "scenario": "link-drop",
+  "synthetic": false,
+  "recorded": "2026-10-17T00:29:25Z",
+  "verdict": "PASS",
+  "criteria": [
+    {
+      "id": "c1-injected-live",
+      "description": "the fault was injected while the run was live",
+      "ok": true,
+      "evidence": "SIGKILL to the helper pid 16325 1.2s into the run, while the UML process was alive",
+      "required": true
+    },
+    {
+      "id": "c2-run-ended",
+      "description": "the run ended by itself within 90s of the injection",
+      "ok": true,
+      "evidence": "ended 34.5s into the run",
+      "required": true
+    },
+    {
+      "id": "c3-no-false-pass",
+      "description": "a run whose link or guest was destroyed does not report PASS",
+      "ok": true,
+      "evidence": "gate verdict=FAIL",
+      "required": true
+    },
+    {
+      "id": "c4-no-survivors",
+      "description": "no umnet/passt/UML process survived the run",
+      "ok": true,
+      "evidence": "none after 3s settle",
+      "required": true
+    },
+    {
+      "id": "c5-link-loss-visible",
+      "description": "the run's own output shows the bridge noticing the link going away (informational: a killed helper may leave no line at all)",
+      "ok": true,
+      "evidence": "passt killed by signal 9 (Killed)",
+      "required": true
+    }
+  ],
+  "run": {
+    "argv": [
+      "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo/src/tools/um-arm64/harness/test-umnet-network.sh",
+      "--workdir",
+      "/data/data/com.termux/files/usr/tmp/um-network",
+      "--log",
+      "net-gate.log",
+      "--timeout",
+      "300",
+      "--dns",
+      "1.1.1.1",
+      "--passt-pid-file",
+      "/data/data/com.termux/files/usr/tmp/um-network/passt.pid"
+    ],
+    "exit-code": 1,
+    "timed-out": false,
+    "killed-tree": [],
+    "seconds": 34.534,
+    "verdict-line": "FAIL",
+    "checks": [
+      {
+        "name": "dhcp",
+        "status": "ok"
+      },
+      {
+        "name": "addr",
+        "status": "ok"
+      },
+      {
+        "name": "route",
+        "status": "ok"
+      },
+      {
+        "name": "dns-config",
+        "status": "ok"
+      },
+      {
+        "name": "icmp",
+        "status": "MISSING"
+      },
+      {
+        "name": "dns-lookup",
+        "status": "MISSING"
+      },
+      {
+        "name": "tcp",
+        "status": "MISSING"
+      },
+      {
+        "name": "concurrent",
+        "status": "ok"
+      },
+      {
+        "name": "clean-exit",
+        "status": "ok"
+      }
+    ],
+    "teardown": "umnet: passt killed by signal 9 (Killed)",
+    "stderr-tail": [
+      "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1",
+      "gate: dhcp         ok",
+      "gate: addr         ok",
+      "gate: route        ok",
+      "gate: dns-config   ok",
+      "gate: icmp         MISSING",
+      "gate: dns-lookup   MISSING",
+      "gate: tcp          MISSING",
+      "gate: concurrent   ok",
+      "gate: clean-exit   ok",
+      "gate: teardown: umnet: passt killed by signal 9 (Killed)",
+      "verdict=FAIL",
+      "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+    ]
+  },
+  "survivors": [],
+  "guest-log": {
+    "path": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log",
+    "sha256": "e9df51f4e254b05e30c9ec508d4eefad52fc96346bf13b61f738b8ae30440b9f",
+    "size": 6599,
+    "lines": 144,
+    "panic-observed": false,
+    "panic-not-triggered": false,
+    "clean-guest-exit": true,
+    "excerpt": {
+      "head": [
+        "umnet: announcing nameserver 1.1.1.1 (--dns)",
+        "Unable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied",
+        "MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host 127.0.0.1: 10.0.2.2",
+        "DHCP:",
+        "    assign: 10.0.2.15",
+        "    mask: 255.255.255.0",
+        "    router: 10.0.2.2",
+        "DNS:",
+        "    1.1.1.1",
+        "Inbound forwarding rules (HOST):"
+      ],
+      "tail": [
+        "PING 10.0.2.2 (10.0.2.2): 56 data bytes",
+        "",
+        "--- 10.0.2.2 ping statistics ---",
+        "2 packets transmitted, 0 packets received, 100% packet loss",
+        "NET_PING_DONE",
+        "NET_DNS",
+        ";; connection timed out; no servers could be reached",
+        "",
+        "NET_TCP",
+        "wget: bad address 'example.com'",
+        "NET_TCP_DONE",
+        "NET_CONCURRENT",
+        "wget: bad address 'example.com'",
+        "wget: bad address 'example.com'",
+        "wget: bad address 'example.com'",
+        "wget: bad address 'example.com'",
+        "wget: bad address 'example.com'",
+        "wget: bad address 'example.com'",
+        "NET_CONCURRENT_RC=0",
+        "NET_LATENCY",
+        "NET_DONE",
+        "UM_NET_COMMAND_EXIT=0",
+        "reboot: Power down",
+        "",
+        "umnet: passt killed by signal 9 (Killed)"
+      ]
+    }
+  },
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "not-verified": [
+    "a fault injection exercises one failure at one moment; it does not prove the bridge handles every failure mode",
+    "link-drop kills passt, which is the closest a non-root Termux process gets to dropping the host link; radio handover and interface-down are not reproducible here",
+    "guest-panic needs CONFIG_MAGIC_SYSRQ and a writable /proc/sysrq-trigger in the guest; PANIC_NOT_TRIGGERED in the log means the trigger never reached the kernel",
+    "the panic scenario boots a copy of the rootfs and its own command line; it does not prove the release gate's own arguments are right",
+    "timing is wall-clock, not deterministic: the fault is injected a fixed delay after the UML process appears",
+    "the survivor check is global: another process on the phone whose command line matches a watched token (a second harness run, say) is reported as a survivor too; run device gates one at a time"
+  ],
+  "notes": [],
+  "exit-code": 0,
+  "message": "link-drop: all required criteria met",
+  "injection": {
+    "target": "passt-bionic",
+    "signal": "SIGKILL",
+    "injected": true,
+    "pid": 16325,
+    "at-seconds": 1.2,
+    "cmdline": "pid 16325 from passt.pid"
+  }
+}

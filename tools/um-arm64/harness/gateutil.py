@@ -674,23 +674,34 @@ def watch_starttime():
 # ---------------------------------------------------------------------------
 
 def build_bridge_command(workdir, assets_dir, dns="1.1.1.1", netroot=None,
-                         extra=()):
+                         extra=(), ipv6=False, ipv6_addr="fd00::2/64",
+                         ipv6_gw="fe80::1",
+                         ipv6_dns="2001:4860:4860::8888"):
     """The umnet + UML command line the network gate boots.
 
     Kept in sync with `run_gate()` in test-umnet-network.sh.  Scenarios that
     must supply their own guest script (a guest-side kernel panic, say) cannot
     go through the gate, because the gate rewrites `net-command.sh` on every
     run; they drive the bridge directly with the identical arguments.
+
+    `ipv6=True` asks umnet for the second, IPv6-only passt; the guest script
+    the caller writes then has to configure the address itself (the gate's
+    `--ipv6` mode writes one, but a custom script has to do the same).
     """
     umnet = os.path.join(workdir, "umnet")
     passt = os.path.join(workdir, "passt-bionic")
     kernel = os.path.join(assets_dir, "linux-bionic")
     stub = os.path.join(assets_dir, "stub_exe")
     root = netroot or os.path.join(workdir, "netroot")
-    return [umnet, "--passt", passt, "--dns", dns, "--", kernel,
-            "mem=512M", "rw", "init=/um-init", "con=null", "con0=fd:0,fd:1",
-            "stub_exe=" + stub, "rootfstype=hostfs", "rootflags=" + root,
-            "panic=1"] + list(extra)
+    cmd = [umnet, "--passt", passt]
+    if ipv6:
+        cmd += ["--ipv6", "--ipv6-addr", ipv6_addr, "--ipv6-gw", ipv6_gw]
+        if ipv6_dns != "none":
+            cmd += ["--ipv6-dns", ipv6_dns]
+    return cmd + ["--dns", dns, "--", kernel,
+                  "mem=512M", "rw", "init=/um-init", "con=null", "con0=fd:0,fd:1",
+                  "stub_exe=" + stub, "rootfstype=hostfs", "rootflags=" + root,
+                  "panic=1"] + list(extra)
 
 
 def run_on_pty(cmd, timeout):

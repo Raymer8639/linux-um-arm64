@@ -4,7 +4,10 @@
 Run from the Termux host, never inside a traced neoproot container.  The gate
 boots the UML kernel through ``umnet`` with a passt-provided userspace stack
 and checks what the guest can actually do with the network it was given:
-DHCP, DNS, IPv4 TCP, concurrency, ICMP, and clean teardown.
+DHCP, DNS, IPv4 TCP, concurrency, ICMP, and clean teardown.  With --ipv6
+the guest also gets an IPv6 address on vec0, served by a second, IPv6-only
+passt; the same run then adds address, route, ping6, AAAA and IPv6 TCP checks
+(see the IPv6 section in tools/um-arm64/doc/90-networking.md).
 
 Layout expected under ``--workdir`` (default ``$PREFIX/tmp/um-network``):
 
@@ -25,7 +28,9 @@ import os
 import pty
 import re
 import select
+import shlex
 import signal
+import socket
 import sys
 import time
 
@@ -66,7 +71,7 @@ while [ "$dns_attempt" -lt 8 ]; do
     dns_attempt=$((dns_attempt + 1))
     dns_answer=$($bb nslookup example.com 2>&1)
     printf '%s\n' "$dns_answer"
-    printf '%s\n' "$dns_answer" | $bb grep -qE 'Address: [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' && break
+    printf '%s\n' "$dns_answer" | $bb grep -qE 'Address: [0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+' && break
     $bb sleep 1
 done
 
@@ -97,9 +102,75 @@ echo NET_LATENCY
 for i in 1 2 3 4 5; do
     $bb ping -c 1 -W 2 10.0.2.2 2>&1 | $bb grep -o 'time=[0-9.]*'
 done
-
+__IPV6_SECTION__
 echo NET_DONE
 exit 0
+"""
+
+# The IPv6 half of the guest command, written only with --ipv6.  It is a
+# separate section because the gate's IPv6 mode asks for a second passt and a
+# guest that has both stacks; the IPv4 checks above are unchanged.
+#
+# The address is configured statically instead of left to SLAAC: the gate has
+# to look for a known address, and passt also serves DHCPv6/RA for guests that
+# prefer them (the handler is passt's, not this script's).
+GUEST_IPV6_SECTION = """
+echo NET_IPV6
+if [ -e /proc/net/if_inet6 ]; then
+    echo NET_IPV6_KERNEL=yes
+else
+    echo NET_IPV6_KERNEL=no
+fi
+
+if [ -e /proc/net/if_inet6 ]; then
+    # Keep the kernel from configuring vec0 itself: the gate wants the
+    # address it names, not one it would have to discover.
+    $bb sysctl -w net.ipv6.conf.vec0.accept_ra=0 >/dev/null 2>&1
+    $bb sysctl -w net.ipv6.conf.vec0.accept_dad=0 >/dev/null 2>&1
+    $bb ip -6 addr add __ADDR__ dev vec0 2>&1
+    $bb ip -6 route add default via __GW__ dev vec0 2>&1
+    $bb sleep 3
+    $bb ip -6 addr show vec0 2>&1
+    $bb ip -6 route 2>&1
+
+    echo NET_PING6_GW
+    $bb ping6 -c 2 -W 3 -I vec0 __GW__ >/tmp/ping6 2>&1
+    ping6_rc=$?
+    # 127 is busybox saying the applet does not exist; anything else is the
+    # ping itself and must not be retried through a different spelling.
+    if [ "$ping6_rc" -eq 127 ]; then
+        $bb ping -6 -c 2 -W 3 -I vec0 __GW__ >/tmp/ping6 2>&1
+        ping6_rc=$?
+    fi
+    $bb cat /tmp/ping6
+    echo NET_PING6_RC=$ping6_rc
+
+    echo NET_IPV6_DNS
+    dns6_attempt=0
+    while [ "$dns6_attempt" -lt 8 ]; do
+        dns6_attempt=$((dns6_attempt + 1))
+        dns6_answer=$($bb nslookup -type=AAAA example.com __DNS6__ 2>&1)
+        printf '%s\n' "$dns6_answer"
+        printf '%s\n' "$dns6_answer" | $bb grep -q '^Name:' && break
+        $bb sleep 1
+    done
+    aaaa=$(printf '%s\n' "$dns6_answer" | $bb sed -n '/^Name:/{n;s/^Address:[[:space:]]*//p;}' | $bb head -1)
+    printf 'NET_IPV6_AAAA=%s\n' "$aaaa"
+
+    echo NET_IPV6_TCP
+    tcp6_attempt=0
+    while [ "$tcp6_attempt" -lt 3 ]; do
+        tcp6_attempt=$((tcp6_attempt + 1))
+        if [ -n "$aaaa" ]; then
+            tcp6_body=$($bb wget -T 30 -O - "http://[$aaaa]/" --header 'Host: example.com' 2>&1 | $bb head -3)
+        else
+            tcp6_body=""
+        fi
+        printf '%s\n' "$tcp6_body"
+        printf '%s\n' "$tcp6_body" | $bb grep -q 'Example Domain' && { echo NET_IPV6_TCP_OK=1; break; }
+        $bb sleep 1
+    done
+fi
 """
 
 
@@ -108,7 +179,7 @@ def fail(message):
     raise SystemExit(1)
 
 
-def skip(message):
+def skip(message, log_path=None):
     """The gate cannot be attempted here, so it judges nothing.
 
     Missing assets or a traced container are facts about the environment, not
@@ -118,16 +189,67 @@ def skip(message):
     convention for it (see docs/RELEASE.md).
     """
     print("gate: " + message, file=sys.stderr)
+    if log_path:
+        print("log=" + log_path, file=sys.stderr)
     print("verdict=SKIP", file=sys.stderr)
     raise SystemExit(EXIT_SKIP)
 
 
-def write_guest_command(netroot):
+def write_guest_command(netroot, ipv6_section=""):
     script = os.path.join(netroot, "net-command.sh")
     with open(script, "w", encoding="utf-8") as handle:
-        handle.write(GUEST_COMMAND)
+        handle.write(GUEST_COMMAND.replace("__IPV6_SECTION__", ipv6_section))
     os.chmod(script, 0o755)
     return script
+
+
+def guest_ipv6_section(args):
+    """The IPv6 half of the guest script, with this run's values filled in."""
+    section = GUEST_IPV6_SECTION
+    section = section.replace("__ADDR__", shlex.quote(args.ipv6_addr))
+    section = section.replace("__GW__", shlex.quote(args.ipv6_gw))
+    section = section.replace("__DNS6__", shlex.quote(args.ipv6_dns))
+    return section
+
+
+def host_ipv6_egress(dns6):
+    """Whether this host can reach the IPv6 internet at all.
+
+    The gate runs beside passt, so a DNS query (the path the guest will use)
+    or a TCP connection from here is the same test passt's sockets will make.
+    A host with no global IPv6 address, no route, or a network that filters
+    both is an environment fact, not a verdict on the bridge: the caller is
+    told to use --link-only instead.
+    """
+    query = (b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+             b"\x07example\x03com\x00\x00\x01\x00\x01")
+    servers = []
+    if dns6 and dns6 != "none":
+        servers.append(dns6)
+    servers += ["2001:4860:4860::8888", "2606:4700:4700::1111"]
+    seen = set()
+    for server in servers:
+        if server in seen:
+            continue
+        seen.add(server)
+        try:
+            sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+            sock.settimeout(3)
+            try:
+                sock.sendto(query, (server, 53))
+                if sock.recvfrom(4096)[0]:
+                    return True
+            finally:
+                sock.close()
+        except OSError:
+            pass
+    for target in ("2606:4700:4700::1111",):
+        try:
+            socket.create_connection((target, 443), timeout=4).close()
+            return True
+        except OSError:
+            pass
+    return False
 
 
 def run_on_pty(cmd, timeout):
@@ -244,8 +366,9 @@ def run_gate(args):
     if not os.path.isdir(netroot):
         skip("missing hostfs root: " + netroot)
 
+    ipv6_section = guest_ipv6_section(args) if args.ipv6 else ""
     if not args.keep_guest_command:
-        write_guest_command(netroot)
+        write_guest_command(netroot, ipv6_section)
     log_path = os.path.join(args.workdir, args.log)
     cmd = [umnet, "--passt", passt]
     if args.passt_pid_file:
@@ -253,12 +376,19 @@ def run_gate(args):
         # cannot be found by looking: it is a live same-uid process that /proc
         # does not list on this platform, while kill(pid, 0) works.
         cmd += ["--passt-pid-file", args.passt_pid_file]
+    if args.ipv6:
+        cmd += ["--ipv6", "--ipv6-addr", args.ipv6_addr,
+                "--ipv6-gw", args.ipv6_gw]
+        if args.ipv6_dns != "none":
+            cmd += ["--ipv6-dns", args.ipv6_dns]
     cmd += ["--dns", args.dns, "--", kernel,
            "mem=512M", "rw", "init=/um-init", "con=null", "con0=fd:0,fd:1",
            "stub_exe=" + stub, "rootfstype=hostfs", "rootflags=" + netroot,
            "panic=1"]
-    print("gate: running on pty, timeout=%ss, announced dns=%s"
-          % (args.timeout, args.dns), file=sys.stderr)
+    print("gate: running on pty, timeout=%ss, announced dns=%s%s"
+          % (args.timeout, args.dns,
+             ", ipv6=%s/%s" % (args.ipv6_addr, args.ipv6_gw)
+             if args.ipv6 else ""), file=sys.stderr)
 
     uml_dirs_before = uml_runtime_dirs()
     completed, raw = run_on_pty(cmd, args.timeout)
@@ -266,6 +396,21 @@ def run_gate(args):
     text = raw.decode("utf-8", errors="replace").replace("\r", "")
     with open(log_path, "w", encoding="utf-8") as handle:
         handle.write(text)
+
+    if args.ipv6:
+        # Two environment facts make an IPv6 verdict impossible to judge, and
+        # the gate says so instead of blaming the bridge.  Both are visible in
+        # the guest log: the first is the kernel's own capability, the second
+        # is umnet reporting that the helper it forked never reached passt's
+        # event loop.
+        if "NET_IPV6_KERNEL=no" in text:
+            skip("guest kernel has no IPv6 stack (/proc/net/if_inet6 is "
+                 "absent); this linux-bionic predates CONFIG_IPV6=y in "
+                 "arch/um/configs/arm64_defconfig and has to be rebuilt",
+                 log_path)
+        if "umnet: ipv6 helper exited" in text:
+            skip("the IPv6 helper (passt -6) exited at start-up; this host "
+                 "cannot serve IPv6 (NETLINK_ROUTE denied?)", log_path)
 
     checks = [
         ("dhcp", r"lease of 10\.0\.2\.15 obtained from 10\.0\.2\.2"),
@@ -281,6 +426,25 @@ def run_gate(args):
         ("concurrent", r"NET_CONCURRENT_RC=0"),
         ("clean-exit", r"UM_NET_COMMAND_EXIT=0"),
     ]
+    if args.ipv6:
+        # Link-level checks are the bridge's: an address, a route and an echo
+        # to passt's own gateway.  They must pass wherever the guest kernel
+        # has IPv6, even when the phone has no IPv6 uplink.
+        checks += [
+            ("ipv6-addr", r"inet6\s+" + re.escape(args.ipv6_addr)),
+            ("ipv6-route", r"default via " + re.escape(args.ipv6_gw) +
+             r" dev vec0"),
+            ("ipv6-icmp", r"NET_PING6_RC=0"),
+        ]
+        # Egress checks need a host that can reach IPv6.  --link-only (or an
+        # explicitly disabled resolver) leaves them out rather than turning a
+        # network fact into a FAIL.
+        if not args.link_only and args.ipv6_dns != "none":
+            checks += [
+                ("ipv6-dns", r"Name:\s*example\.com\s*\nAddress:\s*"
+                             r"[0-9a-fA-F:]+"),
+                ("ipv6-tcp", r"NET_IPV6_TCP_OK=1"),
+            ]
     results = [(name, re.search(pattern, text) is not None)
                for name, pattern in checks]
     for name, passed in results:
@@ -301,6 +465,9 @@ def run_gate(args):
     teardown = re.search(r"umnet: passt (exited|killed[^\n]*)", text)
     print("gate: teardown: " + (teardown.group(0) if teardown
                                 else "no passt teardown line"), file=sys.stderr)
+    if args.ipv6 and (args.link_only or args.ipv6_dns == "none"):
+        print("gate: ipv6-egress skipped (--link-only or --ipv6-dns none)",
+              file=sys.stderr)
 
     passed = completed and all(ok for _, ok in results)
     if not completed:
@@ -334,7 +501,33 @@ def main():
                              "particular resolvers, which breaks the guest's "
                              "lookups without anything being wrong with the "
                              "build; pass a resolver this network reaches.")
+    parser.add_argument("--ipv6", action="store_true",
+                        help="also give the guest IPv6, served by a second, "
+                             "IPv6-only passt (see doc/90-networking.md)")
+    parser.add_argument("--ipv6-addr", default=None,
+                        help="IPv6 address for the guest (default: fd00::2/64)")
+    parser.add_argument("--ipv6-gw", default=None,
+                        help="IPv6 gateway passt emulates (default: fe80::1)")
+    parser.add_argument("--ipv6-dns", default=None,
+                        help="IPv6 nameserver passt announces (default: "
+                             "2001:4860:4860::8888; 'none' disables it and the "
+                             "DNS/TCP egress checks)")
+    parser.add_argument("--link-only", action="store_true",
+                        help="with --ipv6, judge only the link (address, route, "
+                             "ping6) and not IPv6 egress; for a host with no "
+                             "IPv6 uplink")
     args = parser.parse_args()
+
+    # The two options only make sense with IPv6, so let them turn it on the way
+    # umnet does; then fill in the defaults.
+    if args.link_only or args.ipv6_addr or args.ipv6_gw or args.ipv6_dns:
+        args.ipv6 = True
+    if args.ipv6_addr is None:
+        args.ipv6_addr = "fd00::2/64"
+    if args.ipv6_gw is None:
+        args.ipv6_gw = "fe80::1"
+    if args.ipv6_dns is None:
+        args.ipv6_dns = "2001:4860:4860::8888"
 
     if args.timeout <= 0:
         parser.error("timeout must be positive")
@@ -355,6 +548,14 @@ def main():
         # vocabulary the gate uses for the same situation.
         print("verdict=" + ("SKIP" if missing else "PASS"), file=sys.stderr)
         return EXIT_SKIP if missing else 0
+
+    # A host without IPv6 egress can still prove the link half of the path, so
+    # say which mode is required rather than booting into a predictable FAIL.
+    if args.ipv6 and not args.link_only and args.ipv6_dns != "none":
+        if not host_ipv6_egress(args.ipv6_dns):
+            skip("this host cannot reach IPv6 (no global address, no route, "
+                 "or both the DNS query and the TCP probe failed); use "
+                 "--link-only to judge only the local link")
 
     return run_gate(args)
 

@@ -125,7 +125,9 @@ Android all three fail:
 So umnet passes the whole configuration explicitly -- `-4 -a 10.0.2.15 -n 24
 -g 10.0.2.2 -D 1.1.1.1` -- and passt then needs to discover nothing. It still
 reaches the network by opening ordinary sockets, which is what makes this work
-without root.
+without root. The IPv6 helper is the exception: passt's IPv6 path needs netlink
+for its template interface, which is why it is a separate process and why it can
+degrade to "no IPv6" while IPv4 keeps running (see [IPv6](#ipv6)).
 
 ## Result
 
@@ -146,6 +148,109 @@ Android permits via `ping_group_range`.
 
 `./deb` wires this up automatically when `umnet` and `passt` are present next to
 the kernel; `UMDEB_NET=0` turns it off.
+
+## IPv6
+
+The guest can have IPv6 too, but it is served by a *second* passt, and the
+reason is in passt's own configuration code rather than in this bridge.
+
+passt supports both families in one process. Over an inherited socket on
+Android it cannot use both: the "prepatched" path (`--fd`, no namespaces, no
+netlink) sets IPv4 up locally and then still calls `conf_ip6()`, which needs
+the netlink socket that path deliberately never opened. One dual-stack passt
+therefore dies at start-up with
+
+    netlink: Failed to send(): Bad file descriptor
+
+`-6` (passt's spelling of "IPv6 only") does work, because it selects the path
+that opens netlink and discovers a template interface -- but it also takes IPv4
+away from the guest. A guest should not lose IPv4 to gain IPv6.
+
+So `umnet --ipv6` forks an IPv4-only passt *and* an IPv6-only passt, and routes
+each guest frame by its EtherType: `0x86dd` to the IPv6 helper, everything else
+-- IPv4 and ARP -- to the IPv4 helper. On the wire that is a router with one
+address per family; each helper is an independent point-to-point link and
+neither hears the other's frames. The IPv4 helper's loss still ends the run;
+the IPv6 helper's loss does not.
+
+The IPv6 helper needs netlink at start-up to learn a template interface's
+link-local address and prefix. On the Android 15 device this was measured on,
+`NETLINK_ROUTE` is permitted to the app uid; the older Android 13 measurement
+in this project's history was `EPERM`. When it fails the helper exits, umnet
+prints
+
+    umnet: ipv6 helper exited (N); continuing without IPv6
+
+and IPv4 keeps working. That is a degraded environment, not a broken bridge, and
+the gate reports it as `verdict=SKIP` rather than FAIL.
+
+The guest also needs a kernel built with IPv6. `arch/um/configs/arm64_defconfig`
+now sets `CONFIG_IPV6=y`; a `linux-bionic` built before that change has no IPv6
+stack at all, so no userspace command can bring it up and the gate skips with
+that reason.
+
+### What the guest gets
+
+| item | value | option |
+| --- | --- | --- |
+| guest address | `fd00::2/64` | `--ipv6-addr` |
+| gateway | `fe80::1` | `--ipv6-gw` |
+| resolver | `2001:4860:4860::8888` | `--ipv6-dns` (or `none`) |
+
+The prefix is a ULA on purpose: passt terminates the link and acts as the
+router, and outbound traffic leaves through the phone's real IPv6 address. A
+global prefix copied from `wlan0` would instead make passt proxy NDP for the
+guest on the home LAN, which needs router cooperation and is not the job of
+this bridge.
+
+passt answers router solicitation with an RA carrying that prefix (A flag),
+offers the address over DHCPv6, answers neighbour solicitations, and answers
+ICMPv6 echo requests to the gateway by mapping it to the host's `::1` -- the
+same trick it uses for `10.0.2.2` in IPv4. UDP and TCP reach the real network
+through ordinary host sockets.
+
+### Limits
+
+* **One helper per family.** A single passt with both families over `--fd`
+  needs one change in passt's `conf.c`: in the `fd_local_mode` branch, call
+  `conf_ip6_local()` instead of leaving `conf_ip6()` to fail on the absent
+  netlink socket. That is a handful of lines in a different repository and is
+  *not* part of this tree. Until it exists, two processes are the way to have
+  both stacks, and they cost one extra passt (a few MB of RSS) plus one fork.
+* **No NAT64/DNS64.** An IPv6-only destination has to be reachable over the
+  phone's IPv6 uplink; an IPv4-only destination stays an IPv4 destination.
+* **Inbound is still closed.** Both helpers are started with `-t none -u none`.
+* **`--passt-pid-file` names the IPv4 helper**, the one whose loss ends the
+  run. The IPv6 helper's pid is not written anywhere.
+* The IPv6 helper needs a host interface with a link-local address for its
+  template. `wlan0` has one on a normal phone network; a host with IPv6
+  disabled in the kernel has nothing to learn from and the helper exits.
+
+### Gate
+
+**`harness/test-umnet-network.sh --ipv6`** runs the same guest with both
+helpers and adds five checks to the nine IPv4 ones: `ipv6-addr` (the static
+address is on `vec0`), `ipv6-route` (default via the passt gateway),
+`ipv6-icmp` (`ping6` to the gateway, exit 0), `ipv6-dns` (AAAA lookup through
+the IPv6 resolver) and `ipv6-tcp` (a fetch to the resolved IPv6 literal, so the
+guest cannot fall back to IPv4). `--link-only` keeps only the three link-level
+checks and is the mode for a host with no IPv6 uplink.
+
+The gate checks the host's own IPv6 egress before booting. Three environment
+facts make a judged verdict impossible, and all three produce
+`verdict=SKIP` (exit 77), never a PASS or a FAIL:
+
+1. the host has no IPv6 egress and `--link-only` was not given;
+2. the guest's kernel has no IPv6 (`NET_IPV6_KERNEL=no`, i.e. the old
+   `linux-bionic` built without `CONFIG_IPV6`);
+3. the IPv6 helper exited at start-up (`umnet: ipv6 helper exited`).
+
+On the device this was developed on, the uplink does have IPv6: `wlan0` holds a
+global `2409:...` address, a default route via `fe80::a:1`, and both
+`curl -6 https://example.com` and a DNS query to `2001:4860:4860::8888` succeed
+from the app uid. Running the gate there needs a rebuilt `linux-bionic` with
+`CONFIG_IPV6=y`; the runbook is in the subagent report that introduced this
+mode until the device run has been archived as evidence.
 
 ## Gates
 

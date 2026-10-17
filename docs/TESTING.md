@@ -14,7 +14,7 @@ and contain no `BUG:`, `WARNING:` or kernel panic.
 | Neoproot session | `neoproot_protocol=session-v1`, hostfs session mount, cwd, status and exit code |
 | Console | pty input/output and non-pollable stdin fallback |
 | Memory | 4 KB and 16 KB guest page configurations where supported |
-| Networking | loopback, passt vector fd, DHCP, DNS and TCP |
+| Networking | loopback, passt vector fd, DHCP, DNS and TCP; IPv6 link, NDP/ICMPv6, AAAA and IPv6 TCP with the gate's `--ipv6` mode |
 | Lifecycle | fork/exec, signals, timeout cleanup and process-group cleanup |
 | Android | bionic static link, `stub_exe`, API 30 or newer, Termux host execution |
 
@@ -56,6 +56,14 @@ tools/um-arm64/harness/inject-faults.sh --scenario link-drop
 Each tool has an offline `self-test` that needs no phone; those self-tests are
 what CI can run. `verdict=SKIP` (exit 77) means the environment made the run
 impossible -- missing assets, no passt, a traced host -- and is never a pass.
+
+The network gate also has an IPv6 mode: `--ipv6` boots the same guest with a
+second, IPv6-only passt and judges address, route, `ping6` to passt's gateway,
+AAAA resolution and an IPv6 TCP fetch. `--link-only` keeps the three
+link-level checks for a host without an IPv6 uplink. It skips, rather than
+fails, when the guest kernel has no IPv6 (`CONFIG_IPV6`), the host has no
+IPv6 egress, or passt's IPv6 helper cannot start; see
+[tools/um-arm64/doc/90-networking.md](../tools/um-arm64/doc/90-networking.md#ipv6).
 
 ## Fault injection
 

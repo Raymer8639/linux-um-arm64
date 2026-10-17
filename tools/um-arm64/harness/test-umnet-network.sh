@@ -160,6 +160,53 @@ def run_on_pty(cmd, timeout):
     return completed, bytes(log)
 
 
+def uml_runtime_dirs():
+    """Names of the umid directories under $HOME/.uml, as a set."""
+    try:
+        return set(os.listdir(os.path.join(os.path.expanduser("~"), ".uml")))
+    except OSError:
+        return set()
+
+
+def remove_new_uml_dirs(before):
+    """Remove umid directories this run created and then abandoned.
+
+    The kernel removes its own umid directory, but only on the shutdown path --
+    an exitcall that runs when the guest powers off.  This gate kills the
+    process group in its cleanup, so any run that did not power off under its
+    own steam leaves the directory behind: a timeout, or a fault-injection
+    scenario that killed something on purpose.  They accumulate quietly; fifty
+    of them had built up on the phone this was written for.
+
+    Only directories that appeared during this run are candidates, and of those
+    only the ones whose pid file names a process that is already gone, so a
+    second UML running at the same time is never disturbed.
+    """
+    uml = os.path.join(os.path.expanduser("~"), ".uml")
+    for name in uml_runtime_dirs() - before:
+        directory = os.path.join(uml, name)
+        alive = True
+        try:
+            with open(os.path.join(directory, "pid"), encoding="ascii") as handle:
+                pid = int(handle.read().strip())
+            os.kill(pid, 0)
+        except (OSError, ValueError):
+            # No pid file, an unreadable one, or a pid that is gone: either way
+            # nothing owns this directory any more.
+            alive = False
+        if alive:
+            continue
+        for entry in ("mconsole", "pid"):
+            try:
+                os.unlink(os.path.join(directory, entry))
+            except OSError:
+                pass
+        try:
+            os.rmdir(directory)
+        except OSError:
+            pass
+
+
 def run_gate(args):
     umnet = os.path.join(args.workdir, "umnet")
     passt = os.path.join(args.workdir, "passt-bionic")
@@ -182,7 +229,9 @@ def run_gate(args):
     print("gate: running on pty, timeout=%ss, announced dns=%s"
           % (args.timeout, args.dns), file=sys.stderr)
 
+    uml_dirs_before = uml_runtime_dirs()
     completed, raw = run_on_pty(cmd, args.timeout)
+    remove_new_uml_dirs(uml_dirs_before)
     text = raw.decode("utf-8", errors="replace").replace("\r", "")
     with open(log_path, "w", encoding="utf-8") as handle:
         handle.write(text)

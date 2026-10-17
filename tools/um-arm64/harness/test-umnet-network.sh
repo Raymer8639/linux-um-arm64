@@ -222,7 +222,13 @@ def run_gate(args):
 
     write_guest_command(netroot)
     log_path = os.path.join(args.workdir, args.log)
-    cmd = [umnet, "--passt", passt, "--dns", args.dns, "--", kernel,
+    cmd = [umnet, "--passt", passt]
+    if args.passt_pid_file:
+        # Where the bridge writes the helper's pid.  Needed because the helper
+        # cannot be found by looking: it is a live same-uid process that /proc
+        # does not list on this platform, while kill(pid, 0) works.
+        cmd += ["--passt-pid-file", args.passt_pid_file]
+    cmd += ["--dns", args.dns, "--", kernel,
            "mem=512M", "rw", "init=/um-init", "con=null", "con0=fd:0,fd:1",
            "stub_exe=" + stub, "rootfstype=hostfs", "rootflags=" + netroot,
            "panic=1"]
@@ -289,6 +295,9 @@ def main():
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--check-host-only", action="store_true",
                         help="verify the host is untraced and assets exist")
+    parser.add_argument("--passt-pid-file", default=None,
+                        help="ask the bridge to write the helper's pid here, "
+                             "so a caller can signal it")
     parser.add_argument("--dns", default="1.1.1.1",
                         help="nameserver passt announces to the guest (default: "
                              "1.1.1.1).  Some networks block plain DNS to "

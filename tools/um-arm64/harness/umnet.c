@@ -31,7 +31,8 @@
  * argument that points at it.
  *
  * Usage:
- *   umnet [--passt PATH] [--mac MAC] [--iface IF] [--dns ADDR|none]
+ *   umnet [--passt PATH] [--passt-pid-file PATH] [--mac MAC] [--iface IF]
+ *         [--dns ADDR|none]
  *         [--addr A] [--mask N] [--gw G] [--verbose] -- ./linux <uml args...>
  *
  * --dns defaults to the first nameserver the host's resolv.conf names ($PREFIX
@@ -259,6 +260,16 @@ static char *dns_from_resolv_conf(void)
 int main(int argc, char **argv)
 {
 	const char *passt_path = "./passt";
+	/*
+	 * Where to write the helper's pid.  On this platform the helper cannot be
+	 * found by looking: it is a live process of the same uid, it answers
+	 * kill(pid, 0), and /proc does not list it.  (Confirmed from umnet's own
+	 * waitpid while the helper served DHCP and TCP.)  So anything that has to
+	 * signal the helper -- a fault-injection scenario dropping the link, a
+	 * supervisor reaping it -- has to be told the pid by the process that
+	 * forked it.
+	 */
+	const char *passt_pid_file = NULL;
 	const char *mac = "02:00:00:00:00:01";
 	const char *iface = NULL;	/* passt -i: which host interface to mirror */
 	const char *dns = NULL;		/* passt -D; NULL means "work it out" */
@@ -280,6 +291,8 @@ int main(int argc, char **argv)
 			verbose = 1;
 		else if (!strcmp(argv[i], "--passt") && i + 1 < argc)
 			passt_path = argv[++i];
+		else if (!strcmp(argv[i], "--passt-pid-file") && i + 1 < argc)
+			passt_pid_file = argv[++i];
 		else if (!strcmp(argv[i], "--mac") && i + 1 < argc)
 			mac = argv[++i];
 		else if (!strcmp(argv[i], "--iface") && i + 1 < argc)
@@ -308,7 +321,8 @@ int main(int argc, char **argv)
 	if (i >= argc || strcmp(argv[i], "--")) {
 		fprintf(stderr,
 			"usage: umnet [--passt PATH] [--mac MAC] [--iface IF] "
-			"[--dns ADDR|none] [--addr A] [--mask N] [--gw G] "
+			"[--passt-pid-file P] [--dns ADDR|none] [--addr A] [--mask N] "
+			"[--gw G] "
 			"[--verbose] -- ./linux <args...>\n");
 		return 2;
 	}
@@ -437,6 +451,25 @@ int main(int argc, char **argv)
 		}
 		perror("umnet: exec passt");
 		_exit(127);
+	}
+
+	if (passt_pid_file) {
+		char pidbuf[16];
+		int n = snprintf(pidbuf, sizeof(pidbuf), "%d\n", (int)passt_pid);
+		int fd = open(passt_pid_file,
+			      O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+
+		/*
+		 * A failure here is a failure to be able to signal the helper
+		 * later, so say so rather than leaving a caller that asked for
+		 * the file to guess why it is empty.  It is not fatal to the
+		 * run: the guest's network does not depend on it.
+		 */
+		if (fd < 0 || write(fd, pidbuf, n) != n)
+			fprintf(stderr, "umnet: cannot write %s: %s\n",
+				passt_pid_file, strerror(errno));
+		if (fd >= 0)
+			close(fd);
 	}
 
 	close(passt_sp[0]);

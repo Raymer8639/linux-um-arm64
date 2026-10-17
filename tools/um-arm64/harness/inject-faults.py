@@ -392,13 +392,41 @@ def finish_run(scenario, args, attack, criteria, notes, log_path,
 
 
 def scenario_link_drop(args):
-    """Kill passt while the guest is using the link."""
+    """Kill passt while the guest is using the link.
+
+    The helper cannot be found by scanning: it is a live process of the same uid
+    that /proc does not list here (umnet's own waitpid sees it, kill(pid, 0)
+    succeeds, and /proc/<pid> does not exist), so the bridge is asked to write
+    the pid down instead.
+    """
+    pid_file = os.path.join(args.workdir, "passt.pid")
+    try:
+        os.unlink(pid_file)
+    except OSError:
+        pass
     args.uml_before = uml_dir_names()
-    attack = Attack(gate_argv(args), tuple(args.watch), args.interval).start()
+    argv = gate_argv(args) + ["--passt-pid-file", pid_file]
+    attack = Attack(argv, tuple(args.watch), args.interval).start()
     criteria, notes = [], []
     uml = attack.wait_for("linux-bionic", args.start_timeout)
     injection = {"target": "passt-bionic", "signal": "SIGKILL", "injected": False,
                  "pid": None, "at-seconds": None, "cmdline": None}
+
+    def read_pid():
+        try:
+            with open(pid_file, encoding="ascii") as handle:
+                return int(handle.read().strip())
+        except (OSError, ValueError):
+            return None
+
+    pid = None
+    deadline = time.monotonic() + args.start_timeout
+    while time.monotonic() < deadline and attack.alive():
+        pid = read_pid()
+        if pid:
+            break
+        time.sleep(0.1)
+
     if not uml:
         criteria.append(criterion(
             "c1-injected-live",
@@ -406,28 +434,43 @@ def scenario_link_drop(args):
             False,
             "no UML process appeared within %ss (run alive=%s)"
             % (args.start_timeout, attack.alive())))
-    else:
-        passt = attack.wait_for("passt-bionic", args.start_timeout)
-        if passt and settle(attack, args.delay):
-            injection.update({"injected": True, "pid": passt[0].pid,
-                              "at-seconds": round(attack.seconds, 1),
-                              "cmdline": passt[0].cmdline})
-            attack.kill(passt[0].pid)
+    elif not pid:
+        criteria.append(criterion(
+            "c1-injected-live",
+            "the fault was injected while the run was live",
+            False,
+            "the bridge never reported the helper's pid in %s"
+            % pid_file))
+    elif settle(attack, args.delay):
+        cmdline = "pid %d from %s" % (pid, os.path.basename(pid_file))
+        injection.update({"injected": True, "pid": pid,
+                          "at-seconds": round(attack.seconds, 1),
+                          "cmdline": cmdline})
+        try:
+            attack.kill(pid)
+        except OSError as exc:
+            injection["injected"] = False
+            injection["error"] = str(exc)
             criteria.append(criterion(
                 "c1-injected-live",
                 "the fault was injected while the run was live",
-                True,
-                "SIGKILL to pid %d (%s) %.1fs into the run, while the UML "
-                "process was alive" % (passt[0].pid, passt[0].cmdline,
-                                       attack.seconds)))
+                False, "cannot signal pid %d: %s" % (pid, exc)))
         else:
             criteria.append(criterion(
                 "c1-injected-live",
                 "the fault was injected while the run was live",
-                False,
-                "no passt-bionic process in the run's tree while the run "
-                "was alive (run alive=%s, waited %ss)" 
-                % (attack.alive(), args.delay)))
+                True,
+                "SIGKILL to the helper pid %d %.1fs into the run, while the "
+                "UML process was alive" % (pid, attack.seconds)))
+    else:
+        criteria.append(criterion(
+            "c1-injected-live",
+            "the fault was injected while the run was live",
+            False,
+            "the run ended before the injection could land "
+            "(run alive=%s, waited %ss); a gate run here lasts about 5s"
+            % (attack.alive(), args.delay)))
+
     args.injection = injection
     record = finish_run("link-drop", args, attack, criteria, notes,
                         os.path.join(args.workdir, args.log_name))
@@ -441,10 +484,9 @@ def scenario_link_drop(args):
     record["criteria"].append(criterion(
         "c5-link-loss-visible",
         "the run's own output shows the bridge noticing the link going away "
-        "(informational: absence is worth investigating, not automatically a "
-        "failure)",
-        bool(link_loss), link_loss.group(0) if link_loss
-        else "no passt-death line in the run output", required=False))
+        "(informational: a killed helper may leave no line at all)",
+        link_loss is not None,
+        link_loss.group(0) if link_loss else "no helper-death line in the run output"))
     return record
 
 

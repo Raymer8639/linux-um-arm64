@@ -56,15 +56,39 @@ $bb ping -c 2 -W 3 10.0.2.2 2>&1
 echo NET_PING_DONE
 
 echo NET_DNS
-$bb nslookup example.com 2>&1
+# The resolver announced over DHCP is reached over the phone's own UDP path,
+# which is lossy: measured on this network, ~10% of plain queries time out.
+# A lost answer says nothing about the bridge, so ask up to eight times.  Only
+# an IPv4 answer ends the loop: the AAAA one may arrive first and is not what
+# the TCP check below uses.
+dns_attempt=0
+while [ "$dns_attempt" -lt 8 ]; do
+    dns_attempt=$((dns_attempt + 1))
+    dns_answer=$($bb nslookup example.com 2>&1)
+    printf '%s\n' "$dns_answer"
+    printf '%s\n' "$dns_answer" | $bb grep -qE 'Address: [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' && break
+    $bb sleep 1
+done
 
 echo NET_TCP
-$bb wget -T 8 -O - http://example.com/ 2>&1 | $bb head -3
+# -T 30, not -T 8: this check is about frames flowing, not about how fast the
+# public network happens to be. 8 s was tight on a slow mobile link and failed
+# rounds for a reason that said nothing about the bridge.  The whole fetch is
+# retried because wget resolves the name itself: one lost DNS answer otherwise
+# fails the round.
+tcp_attempt=0
+while [ "$tcp_attempt" -lt 3 ]; do
+    tcp_attempt=$((tcp_attempt + 1))
+    tcp_body=$($bb wget -T 30 -O - http://example.com/ 2>&1 | $bb head -3)
+    printf '%s\n' "$tcp_body"
+    printf '%s\n' "$tcp_body" | $bb grep -q 'Example Domain' && break
+    $bb sleep 1
+done
 echo NET_TCP_DONE
 
 echo NET_CONCURRENT
 for i in 1 2 3 4 5 6; do
-    $bb wget -T 8 -q -O /dev/null http://example.com/ &
+    $bb wget -T 30 -q -O /dev/null http://example.com/ &
 done
 wait
 echo NET_CONCURRENT_RC=$?

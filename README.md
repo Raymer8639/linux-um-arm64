@@ -191,6 +191,33 @@ Related probes worth knowing about: `harness/probe/vethprobe.c` creates a veth
 pair over rtnetlink, because busybox's `ip` does not know the veth link type and
 fails identically whether or not `CONFIG_VETH` is set — useless as a test.
 
+### Fault injection and soak
+
+A passing gate proves the happy path. `harness/inject-faults.sh` destroys the
+link, the guest kernel or the UML process **while the guest is using it**, and
+states required criteria before running them, so "it ran" cannot pass for "it
+passed":
+
+| scenario | destroyed mid-run | required criteria |
+|---|---|---|
+| `link-drop` | the passt helper (`SIGKILL`) | injected while live; run ended by itself; did not report `PASS`; no survivors; the bridge's output shows the link going away |
+| `kernel-kill` | the UML process (`SIGKILL`) | injected while live; run ended by itself; did not report `PASS`; no survivors |
+| `guest-panic` | the guest kernel (`sysrq-c`) | panic in the guest log; trigger reached the kernel; no clean guest exit; run ended by itself; no survivors |
+
+All three judge and pass on the device (2026-10-17); records are in
+`docs/evidence/faults/`. Two device facts make them judge at all: passt cannot
+be found by scanning `/proc` on this platform, so the bridge writes the helper's
+pid to `--passt-pid-file`; and UML needs a controlling terminal even when a
+script starts it — `con0=fd:0,fd:1` on a pipe dies before userspace with no
+output, which reads exactly like a kernel fault.
+
+`harness/soak-umnet.sh` is the repetition counterpart: per-round verdicts,
+leaked processes and memory drift. `--minutes` bounds it by wall clock in
+addition to `--rounds`, so
+`soak-umnet.sh --minutes 180 --rounds 5000` is an hour-scale run; records land
+in `docs/evidence/soak/`. Run one device tool at a time — the leak criteria
+count by process name and start time.
+
 ## Benchmarks
 
 Measured on the Poco F3, `adb shell`, guest running `perfbench`. Every column of

@@ -159,16 +159,23 @@ CI cannot do steps 5-9: they need a phone.
    `--verify-hashes` fails if a component no longer matches the binary the
    record was made from.
 8. **Soak and fault injection** -- recommended whenever the bridge, the kernel
-   arguments or the teardown path changed:
+   arguments or the teardown path changed. The three fault scenarios state
+   required criteria and judge on the device; a run that cannot reach its
+   injection point says so instead of passing quietly:
 
    ```sh
+   # repetition: short smoke by default, --minutes for an hour-scale run
    tools/um-arm64/harness/soak-umnet.sh --rounds 20
+   tools/um-arm64/harness/soak-umnet.sh --minutes 180 --rounds 5000
+
    tools/um-arm64/harness/inject-faults.sh --scenario link-drop
-   tools/um-arm64/harness/inject-faults.sh --scenario guest-panic
    tools/um-arm64/harness/inject-faults.sh --scenario kernel-kill
+   tools/um-arm64/harness/inject-faults.sh --scenario guest-panic
    ```
 
-   Records land in `docs/evidence/soak/` and `docs/evidence/faults/`.
+   Records land in `docs/evidence/soak/` and `docs/evidence/faults/`; the
+   latter's README names the current reference set. Do not run a soak and a
+   fault scenario at the same time -- the leak criteria cannot tell them apart.
 9. **State the device matrix and the gaps** in the release notes: the device,
    Android release and host kernel the evidence came from, the record's
    `not-verified` list, and anything the release does not cover.

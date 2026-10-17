@@ -277,6 +277,12 @@ def download(url, path, token=None):
     with urllib.request.urlopen(request, timeout=60) as response, \
             open(path, "wb") as handle:
         shutil.copyfileobj(response, handle)
+    # GitHub serves asset bytes without a file mode, so every download lands
+    # 0600-ish and check_elf()'s is-this-executable test then fails on
+    # perfectly good bytes.  check --tag cannot work unless the downloader
+    # restores the mode the release is promising; it is the same mode make saw
+    # on the build machine.
+    os.chmod(path, 0o755)
     return path
 
 
@@ -410,10 +416,14 @@ def verify_assets(directory, release, assets, require_all):
                                                           "fail", "bug",
                                                           "hang", "panic"):
             fail("%s has an unknown gate value %r" % (asset, gate))
-        if name_is_linux(asset) and gate in ("skip", "") and \
-                release.get("ext4-gate") == "required":
-            fail("linux-bionic was never gated against an ext4 root, but "
-                 "this release requires that evidence")
+        if name_is_linux(asset):
+            ext4 = release.get("ext4-gate", "")
+            if ext4 == "fail":
+                fail("manifest records ext4-gate=fail; a release must not "
+                     "claim a gate it failed")
+            if ext4 in ("pass", "required") and gate != "pass":
+                fail("linux-bionic was never gated against an ext4 root, but "
+                     "this release claims ext4-gate=%s" % ext4)
     return True
 
 
@@ -694,6 +704,28 @@ def cmd_self_test(args):
         with open(at, "w", encoding="utf-8") as handle:
             handle.write(text)
 
+    def edit_manifest(tree, replacements):
+        path = os.path.join(tree, "MANIFEST")
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        for pattern, value in replacements:
+            text = re.sub(pattern, value, text)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def ext4_gate_pass(tree):
+        # ext4-gate=pass is only believable when the asset records the gate it
+        # passed; docs/RELEASE.md promises that pairing.
+        edit_manifest(tree, [(r"(?m)^asset\.linux-bionic\.gate=.*$",
+                             "asset.linux-bionic.gate=pass"),
+                            (r"(?m)^ext4-gate=.*$", "ext4-gate=pass")])
+
+    def ext4_gate_pass_without_asset_gate(tree):
+        edit_manifest(tree, [(r"(?m)^ext4-gate=.*$", "ext4-gate=pass")])
+
+    def ext4_gate_fail(tree):
+        edit_manifest(tree, [(r"(?m)^ext4-gate=.*$", "ext4-gate=fail")])
+
     run_check("good", False, lambda tree: None)
     run_check("corrupt-asset", True, corrupt_asset)
     run_check("corrupt-sums", True, corrupt_sums)
@@ -701,6 +733,20 @@ def cmd_self_test(args):
     run_check("dynamic-binary", True, make_dynamic)
     run_check("missing-field", True, drop_required)
     run_check("lying-size", True, lying_size)
+    run_check("ext4-gate-pass", False, ext4_gate_pass)
+    run_check("ext4-gate-unbacked", True, ext4_gate_pass_without_asset_gate)
+    run_check("ext4-gate-fail", True, ext4_gate_fail)
+
+    # Published releases carry no file modes: GitHub serves bytes only, so the
+    # downloader has to restore the executable bit that check_elf() requires.
+    download_source = os.path.join(workdir, "download-source")
+    download_target = os.path.join(workdir, "download-target")
+    with open(download_source, "w", encoding="utf-8") as handle:
+        handle.write("#!/bin/sh\nexit 0\n")
+    os.chmod(download_source, 0o600)
+    download("file://" + download_source, download_target)
+    cases.append(("download-exec-bit", False,
+                  not os.access(download_target, os.X_OK), ""))
 
     failures = 0
     for label, expect_fail, failed, output in cases:
@@ -744,8 +790,12 @@ def main():
     # gated.  Callers that did run the ext4 gate pass its verdict explicitly.
     make.add_argument("--gate", default="skip",
                       choices=["pass", "skip", "fail", "bug", "hang", "panic"])
+    # docs/RELEASE.md promises pass/fail/skip/optional; required is kept so
+    # manifests written by older runs still round-trip, but new manifests
+    # should record the verdict the gate actually produced.
     make.add_argument("--ext4-gate", default="optional",
-                      choices=["required", "optional"])
+                      choices=["pass", "fail", "skip", "optional",
+                               "required"])
     make.add_argument("--asset-gate", action="append", default=[],
                       metavar="NAME=VERDICT")
     make.set_defaults(func=cmd_make)

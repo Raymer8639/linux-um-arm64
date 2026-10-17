@@ -149,6 +149,10 @@ leak?" by process name and start time, so a second harness run on the same
 phone at the same time looks like a survivor; both tools say so in their own
 `not-verified` list.
 
+`2026-10-17-ext4-binds.md` records the init protocol 2 bind path end to end
+(supervisor to `um-init` to hostfs mounts), which is what an ext4 `-b` release
+claim leans on.
+
 ## What this mechanism solves, and what it does not
 
 It solves traceability: a device verdict now names the four binaries by

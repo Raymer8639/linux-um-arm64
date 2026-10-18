@@ -126,6 +126,7 @@ static int nhelpers;
 static pid_t uml_pid_global;		/* for the signal handler only */
 static pid_t parent_pid;		/* umnet's own pid, for the PDEATHSIG check */
 static int verbose;			/* --verbose: log every frame both ways */
+static unsigned long served_frames;	/* frames moved through the required helper */
 
 /*
  * Take the whole run down with us.
@@ -309,6 +310,7 @@ static int pump_once(int uml_fd, int timeout_ms)
 				fprintf(stderr, "umnet: guest->host %zd -> %s\n",
 					n, h ? h->name : "none");
 			if (h) {
+				served_frames++;
 				memcpy(frame, &len, PFX);
 				if (write_full(h->fd, frame, PFX + n)) {
 					if (h->required)
@@ -363,6 +365,7 @@ static int pump_once(int uml_fd, int timeout_ms)
 				helper_gone(h, "closed mid-frame");
 				continue;
 			}
+			served_frames++;
 			if (verbose)
 				fprintf(stderr, "umnet: host->guest %u\n", len);
 			/*
@@ -829,15 +832,26 @@ int main(int argc, char **argv)
 	 * no amount of pumping will create one.  Say so now instead of entering the
 	 * pump and waiting for a kernel that booted with nothing behind it.
 	 */
+	/*
+	 * Only a helper that has served nothing at all is a start-up failure.
+	 * The check has to look at the pump's own counters, not just at whether
+	 * the child is still alive: a test double, or a passt that legitimately
+	 * finishes its work and exits, must not be reported as "died before
+	 * serving the link".
+	 */
 	usleep(200000);
 	if (waitpid(helpers[0].pid, &status, WNOHANG) == helpers[0].pid) {
-		fprintf(stderr, "umnet: passt exited (%d) before serving the link\n",
-			WIFEXITED(status) ? WEXITSTATUS(status) : -1);
-		helpers[0].pid = 0;
-		helpers[0].alive = false;
-		close(helpers[0].fd);
-		helpers[0].fd = -1;
-		return 1;
+		if (served_frames == 0) {
+			fprintf(stderr,
+				"umnet: passt exited (%d) before serving the link\n",
+				WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+			helpers[0].pid = 0;
+			helpers[0].alive = false;
+			close(helpers[0].fd);
+			helpers[0].fd = -1;
+			return 1;
+		}
+		/* It served the link and finished: the pump handles the rest. */
 	}
 
 	if (passt_pid_file) {

@@ -1,0 +1,16 @@
+date=2026-10-18T05:52:59Z
+--- host resolver probe
+baidu.com ['198.18.0.23']
+example.com ['198.18.0.24']
+--- guest DNS/ping/tcp with retries
+--- D-net-retry rc=0
+umnet: announcing nameserver 8.8.8.8 (host resolv.conf)
+nameserver 8.8.8.8
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 32.476/32.768/33.061 ms
+PING_OK
+TCP_OK
+GUEST_DONE
+UM_COMMAND_EXIT=0
+leftover_uml=0 leftover_proc=0
+RUN2_DONE

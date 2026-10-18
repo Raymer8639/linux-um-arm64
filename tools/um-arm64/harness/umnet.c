@@ -191,6 +191,32 @@ static int write_full(int fd, const void *buf, size_t n)
  * its frames must not be written to a descriptor nobody reads.  Reap it now,
  * say what happened, and take it out of the poll set.
  */
+/*
+ * Reap a helper without blocking forever.
+ *
+ * Returns 1 and fills *status when the child was collected, 0 when it could
+ * not be collected even after SIGKILL.  Called from the teardown path, which
+ * must not be able to stall: the supervisor's exit status depends on it.
+ */
+static int reap_helper(pid_t pid, int *status)
+{
+	int attempt;
+
+	for (attempt = 0; attempt < 50; attempt++) {
+		pid_t done = waitpid(pid, status, WNOHANG);
+
+		if (done == pid)
+			return 1;
+		if (done < 0)
+			return 0;
+		if (attempt == 20)
+			kill(pid, SIGKILL);
+		usleep(100000);
+	}
+	kill(pid, SIGKILL);
+	return waitpid(pid, status, WNOHANG) == pid;
+}
+
 static void helper_gone(struct helper *h, const char *why)
 {
 	if (!h->alive)
@@ -732,6 +758,7 @@ int main(int argc, char **argv)
 	v4_extra[n4++] = "-n"; v4_extra[n4++] = mask;
 	v4_extra[n4++] = "-g"; v4_extra[n4++] = gw;
 	if (dns) { v4_extra[n4++] = "-D"; v4_extra[n4++] = dns; }
+	else if (dns_disabled) { v4_extra[n4++] = "-D"; v4_extra[n4++] = "none"; }
 	if (iface) { v4_extra[n4++] = "-i"; v4_extra[n4++] = iface; }
 	v4_extra[n4] = NULL;
 
@@ -747,6 +774,8 @@ int main(int argc, char **argv)
 		v6_extra[n6++] = "-g"; v6_extra[n6++] = ipv6_gw;
 		if (ipv6_dns) {
 			v6_extra[n6++] = "-D"; v6_extra[n6++] = ipv6_dns;
+		} else if (ipv6_dns_disabled) {
+			v6_extra[n6++] = "-D"; v6_extra[n6++] = "none";
 		}
 		if (iface) { v6_extra[n6++] = "-i"; v6_extra[n6++] = iface; }
 		v6_extra[n6] = NULL;
@@ -879,8 +908,23 @@ int main(int argc, char **argv)
 			_exit(1);
 		}
 
-		snprintf(vecarg, sizeof(vecarg),
-			 "vec0:transport=fd,fd=%d,mac=%s", uml_sp[0], mac);
+		/*
+		 * The Mac is pasted into a comma-separated kernel vector, so a
+		 * comma (or anything that ends the parameter) would add parameters
+		 * of its own.  Reject rather than truncate: a silently wrong vector
+		 * is worse than a refused start.
+		 */
+		if (strchr(mac, ',') || strchr(mac, ' ')) {
+			dprintf(STDERR_FILENO,
+				"umnet: --mac must not contain a comma or space\n");
+			_exit(1);
+		}
+		if (snprintf(vecarg, sizeof(vecarg),
+			     "vec0:transport=fd,fd=%d,mac=%s", uml_sp[0], mac) >=
+		    (int)sizeof(vecarg)) {
+			dprintf(STDERR_FILENO, "umnet: --mac is too long\n");
+			_exit(1);
+		}
 
 		child = calloc(argc - umlarg + 2, sizeof(char *));
 		if (!child)
@@ -952,7 +996,12 @@ int main(int argc, char **argv)
 	for (i = 0; i < nhelpers; i++) {
 		if (helpers[i].pid <= 0)
 			continue;
-		if (waitpid(helpers[i].pid, &status, 0) <= 0)
+		/*
+		 * Bounded reap.  A helper that does not die on SIGTERM (SIGSTOPped,
+		 * or wedged in the kernel) must not hold up the exit status that
+		 * the supervisor is waiting for.  Give it a moment, then SIGKILL.
+		 */
+		if (reap_helper(helpers[i].pid, &status) <= 0)
 			continue;
 		if (!WIFSIGNALED(status) && !WIFEXITED(status))
 			continue;

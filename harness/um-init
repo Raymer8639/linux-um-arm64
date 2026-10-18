@@ -9,9 +9,15 @@ protocol=
 mount_proc() { mount -t proc proc /proc 2>/dev/null || test -r /proc/self/status; }
 mount_sys() { mount -t sysfs sysfs /sys 2>/dev/null || test -d /sys/kernel; }
 mount_dev() { mount -t devtmpfs devtmpfs /dev 2>/dev/null || test -c /dev/null; }
+# devtmpfs provides /dev/ptmx but not /dev/pts.  Without devpts, allocating a
+# pty fails with ENXIO ("unable to allocate pty"), which breaks sudo, sshd,
+# screen and anything else that opens a terminal of its own.
+# The fallback must prove the mount happened: mkdir alone would always succeed
+# and hide a failed mount behind a directory that exists but is not devpts.
+mount_pts() { mkdir -p /dev/pts 2>/dev/null; mount -t devpts devpts /dev/pts 2>/dev/null || [ -c /dev/pts/ptmx ]; }
 power_down() { sync; poweroff -f; while :; do sleep 3600; done; }
 
-if ! mount_proc || ! mount_sys || ! mount_dev; then
+if ! mount_proc || ! mount_sys || ! mount_dev || ! mount_pts; then
     printf '%s\n' 'UM_SESSION_ERROR=125'
     power_down
 fi

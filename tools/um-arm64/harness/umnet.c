@@ -75,6 +75,7 @@
 #include <poll.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
 
@@ -86,6 +87,31 @@
  * One passt and the stream socket this process pumps frames over.  There is
  * always an IPv4 helper; the IPv6 one exists only with --ipv6.
  */
+/*
+ * How long a single read or write on a helper socket may block.
+ *
+ * The pump runs in the same process as the waitpid() that reaps the UML
+ * kernel, so an unbounded write to a helper that stopped draining (SIGSTOP,
+ * a resource-stalled passt) would stop umnet from ever noticing the guest
+ * exited -- the very hang the poll()/waitpid loop exists to avoid.  A timeout
+ * turns that into EAGAIN, and EAGAIN on this path already means "drop the
+ * frame", which is the correct loss model for a network bridge.
+ */
+#define HELPER_IO_TIMEOUT_SEC 5
+
+/*
+ * Apply the I/O budget above to a helper's stream socket.
+ */
+static int helper_limit_io(int fd)
+{
+	struct timeval tv = { .tv_sec = HELPER_IO_TIMEOUT_SEC, .tv_usec = 0 };
+
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) ||
+	    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)))
+		return -1;
+	return 0;
+}
+
 struct helper {
 	const char *name;	/* "IPv4" / "IPv6", for messages */
 	pid_t pid;
@@ -114,13 +140,13 @@ static void reap(int sig)
 {
 	int i;
 
-	(void)sig;
 	if (uml_pid_global > 0)
 		kill(-uml_pid_global, SIGKILL);
 	for (i = 0; i < nhelpers; i++)
 		if (helpers[i].pid > 0 && helpers[i].alive)
 			kill(helpers[i].pid, SIGTERM);
-	_exit(0);
+	/* An aborted run is not a successful one: report it the way a shell does. */
+	_exit(128 + sig);
 }
 
 /* Read exactly n bytes, or return 0 on EOF / -1 on error. */
@@ -295,6 +321,12 @@ static int pump_once(int uml_fd, int timeout_ms)
 			if (len == 0 || len > MAX_FRAME) {
 				fprintf(stderr, "umnet: bad frame length %u\n",
 					len);
+				/* The optional helper's stream is untrustworthy now, but
+				 * IPv4 is still serving: drop the helper, keep the link. */
+				if (!h->required) {
+					helper_gone(h, "bad frame length");
+					continue;
+				}
 				return -1;
 			}
 			if (read_full(h->fd, frame + PFX, len) <= 0) {
@@ -410,6 +442,15 @@ static void exec_passt(const char *path, int fd, const char *const *extra)
 	char *argv[48];
 	int n = 0, i;
 
+	/*
+	 * The parent (this process) owns the isolation: it created the socketpair,
+	 * it started the kernel, and on Android the kernel denies the namespaces
+	 * passt would create.  Say so explicitly rather than letting passt infer
+	 * it from the descriptor type, because that inference also applied to
+	 * ordinary non-Android --fd callers and silently dropped their sandbox.
+	 */
+	setenv("PASST_ANDROID_NO_ISOLATION", "1", 1);
+
 	snprintf(fdbuf, sizeof(fdbuf), "%d", fd);
 
 	argv[n++] = "passt";
@@ -459,6 +500,8 @@ static pid_t spawn_helper(const char *path, const char *name, int child_fd,
 	}
 
 	close(child_fd);
+	if (helper_limit_io(parent_fd))
+		perror("umnet: helper I/O timeout");
 	helpers[nhelpers].name = name;
 	helpers[nhelpers].pid = pid;
 	helpers[nhelpers].fd = parent_fd;
@@ -751,6 +794,23 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/*
+	 * The IPv4 helper is required: if it died before reaching its event loop
+	 * (bad --passt path, or passt rejecting an argument), there is no link and
+	 * no amount of pumping will create one.  Say so now instead of entering the
+	 * pump and waiting for a kernel that booted with nothing behind it.
+	 */
+	usleep(200000);
+	if (waitpid(helpers[0].pid, &status, WNOHANG) == helpers[0].pid) {
+		fprintf(stderr, "umnet: passt exited (%d) before serving the link\n",
+			WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+		helpers[0].pid = 0;
+		helpers[0].alive = false;
+		close(helpers[0].fd);
+		helpers[0].fd = -1;
+		return 1;
+	}
+
 	if (passt_pid_file) {
 		char pidbuf[16];
 		int n = snprintf(pidbuf, sizeof(pidbuf), "%d\n",
@@ -774,7 +834,16 @@ int main(int argc, char **argv)
 	uml_pid = fork();
 	uml_pid_global = uml_pid;
 	if (uml_pid < 0) {
+		/* The helpers are already running and have no PDEATHSIG of their
+		 * own (only the UML child gets one), so leaving them here would
+		 * keep the socket -- and the link -- open after umnet is gone. */
 		perror("umnet: fork");
+		for (i = 0; i < nhelpers; i++) {
+			if (helpers[i].pid > 0) {
+				kill(helpers[i].pid, SIGTERM);
+				(void)waitpid(helpers[i].pid, NULL, 0);
+			}
+		}
 		return 1;
 	}
 	if (uml_pid == 0) {

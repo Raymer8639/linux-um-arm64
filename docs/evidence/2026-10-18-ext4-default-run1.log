@@ -1,0 +1,39 @@
+date=2026-10-18T05:52:45Z
+device=Redmi 23124RN87C android15 sdk35 host-kernel=5.15.194-android13-8-00019-gf4321180a397-ab15212794
+neoproot=06fb53ca40895209 neoproot-um=914ba9e29eed5930
+host_resolv=
+b778f4f7c889b258278df8e4d542fc0244a32424bb30fe69067ca66e45ceb9f9  assets/linux-bionic
+731c48d5bf42ef25e26625af6a02627a5d658bf9f67d6f7fc443d6d644d6e52e  assets/stub_exe
+7683b4f8cba8cd403b889d8073cc47f390c0de699260d7ecb0f40f3479ce5ebb  assets/umnet
+502d980c7c4a582b59a44d2e1bda578f4a67a9b2926c7cb05648cdaef5065a06  assets/passt-bionic
+image_sha_before=2cc8ff7b905700b9cdf33ee13cd004fb52a3a2938bb375262cd54896fca422d8
+--- A-default-ext4 rc=0
+Kernel command line: rw init=/um-init con=null con0=fd:0,fd:1 ubd0=/data/data/com.termux/files/home/neoproot-bench/rootfs.img.cow,/data/data/com.termux/files/home/neoproot-bench/rootfs.img root=/dev/ubda rootfstype=ext4 neoproot_protocol=session-v1 neoproot_session=/.neoproot-um-ufuUGB neoproot_cwd=/root panic=1 console=tty0
+EXT4-fs (ubda): recovery complete
+EXT4-fs (ubda): mounted filesystem 6fd0b797-8130-4751-849e-22a11794aafc r/w with ordered data mode. Quota mode: none.
+VFS: Pivoted into new rootfs
+UM_COMMAND_EXIT=0
+reboot: Power down
+--- B-exit-7 rc=7
+Kernel command line: rw init=/um-init con=null con0=fd:0,fd:1 ubd0=/data/data/com.termux/files/home/neoproot-bench/rootfs.img.cow,/data/data/com.termux/files/home/neoproot-bench/rootfs.img root=/dev/ubda rootfstype=ext4 neoproot_protocol=session-v1 neoproot_session=/.neoproot-um-HmaMXt neoproot_cwd=/root panic=1 console=tty0
+EXT4-fs (ubda): recovery complete
+EXT4-fs (ubda): mounted filesystem 6fd0b797-8130-4751-849e-22a11794aafc r/w with ordered data mode. Quota mode: none.
+VFS: Pivoted into new rootfs
+UM_COMMAND_EXIT=7
+reboot: Power down
+--- C-hostfs rc=0
+Kernel command line: rw init=/.neoproot-um-WW34jm/init.sh con=null con0=fd:0,fd:1 rootfstype=hostfs rootflags=/data/data/com.termux/files/home/neoproot-bench/rootfs panic=1 root=98:0 console=tty0
+VFS: Pivoted into new rootfs
+reboot: Power down
+--- D-net rc=0
+Kernel command line: rw init=/um-init con=null con0=fd:0,fd:1 ubd0=/data/data/com.termux/files/home/neoproot-bench/rootfs.img.cow,/data/data/com.termux/files/home/neoproot-bench/rootfs.img root=/dev/ubda rootfstype=ext4 neoproot_protocol=session-v1 neoproot_session=/.neoproot-um-pHj9Qa neoproot_cwd=/root panic=1 vec0:transport=fd,fd=4,mac=02:00:00:00:00:01 console=tty0
+EXT4-fs (ubda): recovery complete
+EXT4-fs (ubda): mounted filesystem 6fd0b797-8130-4751-849e-22a11794aafc r/w with ordered data mode. Quota mode: none.
+VFS: Pivoted into new rootfs
+LOOPBACK_OK
+TCP_OK
+UM_COMMAND_EXIT=0
+reboot: Power down
+image_sha_after=2cc8ff7b905700b9cdf33ee13cd004fb52a3a2938bb375262cd54896fca422d8
+leftover_uml=0 leftover_proc=0
+RUN1_DONE

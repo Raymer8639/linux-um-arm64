@@ -1,0 +1,224 @@
+{
+  "evidence-format": 1,
+  "kind": "termux-umnet-network-gate",
+  "synthetic": false,
+  "recorded": "2026-10-18T07:15:58Z",
+  "verdict": "PASS",
+  "exit-code": 0,
+  "message": "device gate passed",
+  "gate": {
+    "path": "tools/um-arm64/harness/test-umnet-network.sh",
+    "argv": [
+      "--workdir",
+      "/data/data/com.termux/files/usr/tmp/um-network",
+      "--log",
+      "net-gate.log",
+      "--timeout",
+      "300",
+      "--dns",
+      "1.1.1.1",
+      "--ipv6",
+      "--ipv6-dns=none"
+    ],
+    "timeout-s": 300,
+    "dns": "1.1.1.1",
+    "seconds": 41.595,
+    "exit-code": 0,
+    "timed-out": false,
+    "verdict-line": "PASS",
+    "stderr-tail": [
+      "gate: running on pty, timeout=300.0s, announced dns=1.1.1.1, ipv6=fd00::2/64/fe80::1",
+      "gate: dhcp         ok",
+      "gate: addr         ok",
+      "gate: route        ok",
+      "gate: icmp         ok",
+      "gate: clean-exit   ok",
+      "gate: dns-config   ok",
+      "gate: dns-lookup   ok",
+      "gate: tcp          ok",
+      "gate: concurrent   ok",
+      "gate: ipv6-addr    ok",
+      "gate: ipv6-route   ok",
+      "gate: ipv6-icmp    ok",
+      "gate: helper-dns   ok",
+      "gate: icmp rtt ms: min=1.7 avg=2.2 max=2.6 (n=4)",
+      "gate: teardown: no passt teardown line",
+      "gate: ipv6-egress skipped (--link-only or --ipv6-dns none)",
+      "verdict=PASS",
+      "log=/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+    ]
+  },
+  "checks": [
+    {
+      "name": "dhcp",
+      "status": "ok"
+    },
+    {
+      "name": "addr",
+      "status": "ok"
+    },
+    {
+      "name": "route",
+      "status": "ok"
+    },
+    {
+      "name": "icmp",
+      "status": "ok"
+    },
+    {
+      "name": "clean-exit",
+      "status": "ok"
+    },
+    {
+      "name": "dns-config",
+      "status": "ok"
+    },
+    {
+      "name": "dns-lookup",
+      "status": "ok"
+    },
+    {
+      "name": "tcp",
+      "status": "ok"
+    },
+    {
+      "name": "concurrent",
+      "status": "ok"
+    },
+    {
+      "name": "ipv6-addr",
+      "status": "ok"
+    },
+    {
+      "name": "ipv6-route",
+      "status": "ok"
+    },
+    {
+      "name": "ipv6-icmp",
+      "status": "ok"
+    },
+    {
+      "name": "helper-dns",
+      "status": "ok"
+    }
+  ],
+  "components": {
+    "linux-bionic": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-arm64/new/linux-bionic",
+      "sha256": "b778f4f7c889b258278df8e4d542fc0244a32424bb30fe69067ca66e45ceb9f9",
+      "size": 94860472,
+      "executable": true
+    },
+    "stub_exe": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-arm64/new/stub_exe",
+      "sha256": "731c48d5bf42ef25e26625af6a02627a5d658bf9f67d6f7fc443d6d644d6e52e",
+      "size": 2000,
+      "executable": true
+    },
+    "umnet": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-network/umnet",
+      "sha256": "7683b4f8cba8cd403b889d8073cc47f390c0de699260d7ecb0f40f3479ce5ebb",
+      "size": 2172944,
+      "executable": true
+    },
+    "passt-bionic": {
+      "path": "/data/data/com.termux/files/usr/tmp/um-network/passt-bionic",
+      "sha256": "502d980c7c4a582b59a44d2e1bda578f4a67a9b2926c7cb05648cdaef5065a06",
+      "size": 2709336,
+      "executable": true
+    }
+  },
+  "guest-kernel-banner": "Linux version 7.2.0-rc4-g856737c31142 (um@arm64) (Android (dev, +pgo, -bolt, +lto, -mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project), LLD 21.0.0) # Thu Jan  1 00:00:00 UTC 1970",
+  "host": {
+    "host-role": "termux-host",
+    "uname": "Linux localhost 5.15.194-android13-8-00019-gf4321180a397-ab15212794 #1 SMP PREEMPT Wed Apr 15 01:39:41 UTC 2026 aarch64",
+    "kernel-release": "5.15.194-android13-8-00019-gf4321180a397-ab15212794",
+    "machine": "aarch64",
+    "termux-prefix": "/data/data/com.termux/files/usr",
+    "python": "3.14.6",
+    "tracer-pid": 0,
+    "device-manufacturer": "Xiaomi",
+    "device-model": "23124RN87C",
+    "android-release": "15",
+    "android-sdk": "35",
+    "android-abi": "arm64-v8a",
+    "android-fingerprint": "Redmi/air/air:15/AP3A.240905.015.A2/OS2.0.210.0.VGQCNXM:user/release-keys"
+  },
+  "git": {
+    "repo": "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/archlinuxarm/rootfs/home/Raymer/work_space/um/repo-clone",
+    "commit": "3c727c4583058546dc3ac20d769ded1050170fc6",
+    "branch": "um-arm64",
+    "dirty-scope": [
+      "tools/um-arm64/harness",
+      "harness"
+    ],
+    "dirty": false
+  },
+  "guest-log": {
+    "path": "2026-10-18-umnet-network-ipv6-dns-none.log",
+    "sha256": "37ad7e70f7df472d84ff44bd87da4018d870f2428d330e32cde53736800da810",
+    "size": 9258,
+    "lines": 216,
+    "truncated": false,
+    "excerpt": {
+      "head": [
+        "umnet: announcing nameserver 1.1.1.1 (--dns)",
+        "umnet: announcing no IPv6 nameserver (--ipv6-dns none)",
+        "Unable to open /proc/sys/net/ipv4/ip_local_port_rangeUnable to open /proc/sys/net/ipv4/ip_local_port_range: Permission denied: Permission denied",
+        "",
+        "MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host ::1: fe80::1MAC:",
+        "    host: 9a:55:9a:55:9a:55",
+        "    NAT to host 127.0.0.1: 10.0.2.2",
+        "DHCP:",
+        "    assign: 10.0.2.15",
+        "    mask: 255.255.255.0",
+        "    router: 10.0.2.2",
+        "DNS:",
+        "    1.1.1.1"
+      ],
+      "tail": [
+        "nslookup: bad address 'none'",
+        "nslookup: bad address 'none'",
+        "nslookup: bad address 'none'",
+        "nslookup: bad address 'none'",
+        "nslookup: bad address 'none'",
+        "nslookup: bad address 'none'",
+        "NET_IPV6_AAAA=",
+        "NET_IPV6_TCP",
+        "",
+        "",
+        "",
+        "NET_DONE",
+        "UM_NET_COMMAND_EXIT=0",
+        "reboot: Power down",
+        ""
+      ]
+    },
+    "source": "/data/data/com.termux/files/usr/tmp/um-network/net-gate.log"
+  },
+  "metrics": {
+    "icmp-rtt-ms": {
+      "min": 1.7,
+      "avg": 2.2,
+      "max": 2.6,
+      "n": 4
+    },
+    "wget-rates": [],
+    "teardown": "no passt teardown line",
+    "clean-shutdown": true
+  },
+  "not-verified": [
+    "IPv6: the guest is only exercised over IPv4 (DHCP, ICMP, DNS, TCP)",
+    "ext4/COW rootfs: this gate boots hostfs only; see the ext4 gate",
+    "long-run stability and resource leakage: see soak-umnet.sh",
+    "fault injection (link drop, guest panic, kernel kill): see inject-faults.sh",
+    "device coverage: one device and one Android release, as recorded above",
+    "throughput and behaviour under sustained load: not measured by this gate",
+    "upstream Linux UML parity: this gate does not compare against upstream",
+    "release manifest and SHA256SUMS: verified separately by verify-release.py",
+    "CI-side checks (x86_64 build, shell/python syntax, release checker self-test): those run on GitHub runners, not here"
+  ],
+  "notes": []
+}

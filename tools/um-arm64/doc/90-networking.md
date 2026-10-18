@@ -276,6 +276,22 @@ tools/um-arm64/harness/record-evidence.sh record \
 The record from the first full IPv6 run is
 `docs/evidence/2026-10-17-umnet-network-ipv6.json`.
 
+The two resolver options can also be turned off independently, and are gated
+separately: `--dns none` announces no IPv4 resolver, `--ipv6-dns none` no IPv6
+one.  Such a run drops the checks that need a resolver and adds two:
+
+* `dns-none` -- for `--dns none`, the guest must end up with no IPv4
+  nameserver at all (the gate clears a stale guest `/etc/resolv.conf` first);
+* `helper-dns` -- passt prints exactly one `DNS:` configuration block per
+  helper that announces resolvers, so the number of blocks in the shared log
+  must match the options.  That is per-helper evidence that each option
+  reached its process, not just the guest-visible half.
+
+IPv6 egress checks cannot run with the resolver disabled; they are skipped,
+not failed.  Records: `docs/evidence/2026-10-18-umnet-network-dns-none.json`
+(both off) and `docs/evidence/2026-10-18-umnet-network-ipv6-dns-none.json`
+(IPv6 only off, IPv4 resolver on as the control).
+
 ## Gates
 
 Two gates cover this path, and neither replaces the other.

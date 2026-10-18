@@ -75,6 +75,7 @@
 #include <poll.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
 
@@ -86,6 +87,31 @@
  * One passt and the stream socket this process pumps frames over.  There is
  * always an IPv4 helper; the IPv6 one exists only with --ipv6.
  */
+/*
+ * How long a single read or write on a helper socket may block.
+ *
+ * The pump runs in the same process as the waitpid() that reaps the UML
+ * kernel, so an unbounded write to a helper that stopped draining (SIGSTOP,
+ * a resource-stalled passt) would stop umnet from ever noticing the guest
+ * exited -- the very hang the poll()/waitpid loop exists to avoid.  A timeout
+ * turns that into EAGAIN, and EAGAIN on this path already means "drop the
+ * frame", which is the correct loss model for a network bridge.
+ */
+#define HELPER_IO_TIMEOUT_SEC 5
+
+/*
+ * Apply the I/O budget above to a helper's stream socket.
+ */
+static int helper_limit_io(int fd)
+{
+	struct timeval tv = { .tv_sec = HELPER_IO_TIMEOUT_SEC, .tv_usec = 0 };
+
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) ||
+	    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)))
+		return -1;
+	return 0;
+}
+
 struct helper {
 	const char *name;	/* "IPv4" / "IPv6", for messages */
 	pid_t pid;
@@ -100,6 +126,7 @@ static int nhelpers;
 static pid_t uml_pid_global;		/* for the signal handler only */
 static pid_t parent_pid;		/* umnet's own pid, for the PDEATHSIG check */
 static int verbose;			/* --verbose: log every frame both ways */
+static unsigned long served_frames;	/* frames moved through the required helper */
 
 /*
  * Take the whole run down with us.
@@ -114,13 +141,13 @@ static void reap(int sig)
 {
 	int i;
 
-	(void)sig;
 	if (uml_pid_global > 0)
 		kill(-uml_pid_global, SIGKILL);
 	for (i = 0; i < nhelpers; i++)
 		if (helpers[i].pid > 0 && helpers[i].alive)
 			kill(helpers[i].pid, SIGTERM);
-	_exit(0);
+	/* An aborted run is not a successful one: report it the way a shell does. */
+	_exit(128 + sig);
 }
 
 /* Read exactly n bytes, or return 0 on EOF / -1 on error. */
@@ -165,6 +192,32 @@ static int write_full(int fd, const void *buf, size_t n)
  * its frames must not be written to a descriptor nobody reads.  Reap it now,
  * say what happened, and take it out of the poll set.
  */
+/*
+ * Reap a helper without blocking forever.
+ *
+ * Returns 1 and fills *status when the child was collected, 0 when it could
+ * not be collected even after SIGKILL.  Called from the teardown path, which
+ * must not be able to stall: the supervisor's exit status depends on it.
+ */
+static int reap_helper(pid_t pid, int *status)
+{
+	int attempt;
+
+	for (attempt = 0; attempt < 50; attempt++) {
+		pid_t done = waitpid(pid, status, WNOHANG);
+
+		if (done == pid)
+			return 1;
+		if (done < 0)
+			return 0;
+		if (attempt == 20)
+			kill(pid, SIGKILL);
+		usleep(100000);
+	}
+	kill(pid, SIGKILL);
+	return waitpid(pid, status, WNOHANG) == pid;
+}
+
 static void helper_gone(struct helper *h, const char *why)
 {
 	if (!h->alive)
@@ -257,6 +310,7 @@ static int pump_once(int uml_fd, int timeout_ms)
 				fprintf(stderr, "umnet: guest->host %zd -> %s\n",
 					n, h ? h->name : "none");
 			if (h) {
+				served_frames++;
 				memcpy(frame, &len, PFX);
 				if (write_full(h->fd, frame, PFX + n)) {
 					if (h->required)
@@ -295,6 +349,12 @@ static int pump_once(int uml_fd, int timeout_ms)
 			if (len == 0 || len > MAX_FRAME) {
 				fprintf(stderr, "umnet: bad frame length %u\n",
 					len);
+				/* The optional helper's stream is untrustworthy now, but
+				 * IPv4 is still serving: drop the helper, keep the link. */
+				if (!h->required) {
+					helper_gone(h, "bad frame length");
+					continue;
+				}
 				return -1;
 			}
 			if (read_full(h->fd, frame + PFX, len) <= 0) {
@@ -305,6 +365,7 @@ static int pump_once(int uml_fd, int timeout_ms)
 				helper_gone(h, "closed mid-frame");
 				continue;
 			}
+			served_frames++;
 			if (verbose)
 				fprintf(stderr, "umnet: host->guest %u\n", len);
 			/*
@@ -410,6 +471,15 @@ static void exec_passt(const char *path, int fd, const char *const *extra)
 	char *argv[48];
 	int n = 0, i;
 
+	/*
+	 * The parent (this process) owns the isolation: it created the socketpair,
+	 * it started the kernel, and on Android the kernel denies the namespaces
+	 * passt would create.  Say so explicitly rather than letting passt infer
+	 * it from the descriptor type, because that inference also applied to
+	 * ordinary non-Android --fd callers and silently dropped their sandbox.
+	 */
+	setenv("PASST_ANDROID_NO_ISOLATION", "1", 1);
+
 	snprintf(fdbuf, sizeof(fdbuf), "%d", fd);
 
 	argv[n++] = "passt";
@@ -459,6 +529,8 @@ static pid_t spawn_helper(const char *path, const char *name, int child_fd,
 	}
 
 	close(child_fd);
+	if (helper_limit_io(parent_fd))
+		perror("umnet: helper I/O timeout");
 	helpers[nhelpers].name = name;
 	helpers[nhelpers].pid = pid;
 	helpers[nhelpers].fd = parent_fd;
@@ -689,6 +761,7 @@ int main(int argc, char **argv)
 	v4_extra[n4++] = "-n"; v4_extra[n4++] = mask;
 	v4_extra[n4++] = "-g"; v4_extra[n4++] = gw;
 	if (dns) { v4_extra[n4++] = "-D"; v4_extra[n4++] = dns; }
+	else if (dns_disabled) { v4_extra[n4++] = "-D"; v4_extra[n4++] = "none"; }
 	if (iface) { v4_extra[n4++] = "-i"; v4_extra[n4++] = iface; }
 	v4_extra[n4] = NULL;
 
@@ -704,6 +777,8 @@ int main(int argc, char **argv)
 		v6_extra[n6++] = "-g"; v6_extra[n6++] = ipv6_gw;
 		if (ipv6_dns) {
 			v6_extra[n6++] = "-D"; v6_extra[n6++] = ipv6_dns;
+		} else if (ipv6_dns_disabled) {
+			v6_extra[n6++] = "-D"; v6_extra[n6++] = "none";
 		}
 		if (iface) { v6_extra[n6++] = "-i"; v6_extra[n6++] = iface; }
 		v6_extra[n6] = NULL;
@@ -751,6 +826,34 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/*
+	 * The IPv4 helper is required: if it died before reaching its event loop
+	 * (bad --passt path, or passt rejecting an argument), there is no link and
+	 * no amount of pumping will create one.  Say so now instead of entering the
+	 * pump and waiting for a kernel that booted with nothing behind it.
+	 */
+	/*
+	 * Only a helper that has served nothing at all is a start-up failure.
+	 * The check has to look at the pump's own counters, not just at whether
+	 * the child is still alive: a test double, or a passt that legitimately
+	 * finishes its work and exits, must not be reported as "died before
+	 * serving the link".
+	 */
+	usleep(200000);
+	if (waitpid(helpers[0].pid, &status, WNOHANG) == helpers[0].pid) {
+		if (served_frames == 0) {
+			fprintf(stderr,
+				"umnet: passt exited (%d) before serving the link\n",
+				WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+			helpers[0].pid = 0;
+			helpers[0].alive = false;
+			close(helpers[0].fd);
+			helpers[0].fd = -1;
+			return 1;
+		}
+		/* It served the link and finished: the pump handles the rest. */
+	}
+
 	if (passt_pid_file) {
 		char pidbuf[16];
 		int n = snprintf(pidbuf, sizeof(pidbuf), "%d\n",
@@ -774,7 +877,16 @@ int main(int argc, char **argv)
 	uml_pid = fork();
 	uml_pid_global = uml_pid;
 	if (uml_pid < 0) {
+		/* The helpers are already running and have no PDEATHSIG of their
+		 * own (only the UML child gets one), so leaving them here would
+		 * keep the socket -- and the link -- open after umnet is gone. */
 		perror("umnet: fork");
+		for (i = 0; i < nhelpers; i++) {
+			if (helpers[i].pid > 0) {
+				kill(helpers[i].pid, SIGTERM);
+				(void)waitpid(helpers[i].pid, NULL, 0);
+			}
+		}
 		return 1;
 	}
 	if (uml_pid == 0) {
@@ -810,8 +922,23 @@ int main(int argc, char **argv)
 			_exit(1);
 		}
 
-		snprintf(vecarg, sizeof(vecarg),
-			 "vec0:transport=fd,fd=%d,mac=%s", uml_sp[0], mac);
+		/*
+		 * The Mac is pasted into a comma-separated kernel vector, so a
+		 * comma (or anything that ends the parameter) would add parameters
+		 * of its own.  Reject rather than truncate: a silently wrong vector
+		 * is worse than a refused start.
+		 */
+		if (strchr(mac, ',') || strchr(mac, ' ')) {
+			dprintf(STDERR_FILENO,
+				"umnet: --mac must not contain a comma or space\n");
+			_exit(1);
+		}
+		if (snprintf(vecarg, sizeof(vecarg),
+			     "vec0:transport=fd,fd=%d,mac=%s", uml_sp[0], mac) >=
+		    (int)sizeof(vecarg)) {
+			dprintf(STDERR_FILENO, "umnet: --mac is too long\n");
+			_exit(1);
+		}
 
 		child = calloc(argc - umlarg + 2, sizeof(char *));
 		if (!child)
@@ -883,7 +1010,12 @@ int main(int argc, char **argv)
 	for (i = 0; i < nhelpers; i++) {
 		if (helpers[i].pid <= 0)
 			continue;
-		if (waitpid(helpers[i].pid, &status, 0) <= 0)
+		/*
+		 * Bounded reap.  A helper that does not die on SIGTERM (SIGSTOPped,
+		 * or wedged in the kernel) must not hold up the exit status that
+		 * the supervisor is waiting for.  Give it a moment, then SIGKILL.
+		 */
+		if (reap_helper(helpers[i].pid, &status) <= 0)
 			continue;
 		if (!WIFSIGNALED(status) && !WIFEXITED(status))
 			continue;

@@ -172,6 +172,7 @@ cat >"$temporary_directory/mock-passt-ipv6.c" <<'EOF'
 #include <arpa/inet.h>
 #include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -219,6 +220,7 @@ int main(int argc, char **argv)
     unsigned char reply[64];
     uint32_t network_length;
     const char *tag;
+    const char *dump_path;
     int is_ipv6 = 0;
     int fd = -1;
     int index;
@@ -238,6 +240,23 @@ int main(int argc, char **argv)
     }
     if (fd < 0)
         return 2;
+
+    /* Optional: dump this helper's argv so a test can check what the bridge
+     * passed to each side.  The IPv4 and IPv6 helpers are separate processes
+     * with separate resolver options, so a value that reaches one is not
+     * evidence that it reached the other. */
+    dump_path = getenv("MOCK_ARGV_FILE");
+    if (dump_path) {
+        FILE *dump = fopen(dump_path, "a");
+
+        if (dump) {
+            fprintf(dump, "%s", is_ipv6 ? "v6" : "v4");
+            for (index = 0; index < argc; index++)
+                fprintf(dump, " %s", argv[index]);
+            fprintf(dump, "\n");
+            fclose(dump);
+        }
+    }
 
     /* Proves umnet keeps going when the helper it may do without dies. */
     if (is_ipv6 && getenv("MOCK_FAIL_V6"))
@@ -339,6 +358,71 @@ status=$?
 set -e
 if [ "$status" -ne 0 ]; then
     cat "$temporary_directory/stdout6" "$temporary_directory/stderr6" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# --dns none / --ipv6-dns none must reach the helpers as "-D none".
+#
+# Left to passt, it would read the host's resolv.conf (there is none on
+# Android) and announce a resolver the bridge just promised not to announce.
+# The bridge settles the nameserver for the normal path before forking, so the
+# "none" case has to be as explicit as a value, and per helper: the two
+# resolvers are separate options.
+# ---------------------------------------------------------------------------
+argv_file="$temporary_directory/argv-dns-none"
+: >"$argv_file"
+MOCK_ARGV_FILE="$argv_file" \
+    "$temporary_directory/umnet" --passt "$temporary_directory/mock-passt-ipv6" \
+    --dns none --ipv6 --ipv6-dns none \
+    -- "$temporary_directory/mock-uml-ipv6" \
+    >"$temporary_directory/stdout6c" 2>"$temporary_directory/stderr6c"
+status=$?
+if [ "$status" -ne 0 ]; then
+    cat "$temporary_directory/stdout6c" "$temporary_directory/stderr6c" >&2
+    exit 1
+fi
+if ! grep -Eq '^v4 .* -D none( |$)' "$argv_file"; then
+    cat "$argv_file" >&2
+    echo 'umnet did not pass -D none to the IPv4 helper' >&2
+    exit 1
+fi
+if ! grep -Eq '^v6 .* -D none( |$)' "$argv_file"; then
+    cat "$argv_file" >&2
+    echo 'umnet did not pass -D none to the IPv6 helper' >&2
+    exit 1
+fi
+if ! grep -q 'announcing no nameserver (--dns none)' \
+        "$temporary_directory/stderr6c" ||
+   ! grep -q 'announcing no IPv6 nameserver (--ipv6-dns none)' \
+        "$temporary_directory/stderr6c"; then
+    cat "$temporary_directory/stderr6c" >&2
+    echo 'umnet did not say it announces no nameserver' >&2
+    exit 1
+fi
+
+# Without --ipv6-dns the IPv4 setting must not disable IPv6 DNS: the two
+# resolvers are separate options, and the IPv6 helper still announces one.
+argv_file="$temporary_directory/argv-dns-none-v4-only"
+: >"$argv_file"
+MOCK_ARGV_FILE="$argv_file" \
+    "$temporary_directory/umnet" --passt "$temporary_directory/mock-passt-ipv6" \
+    --dns none --ipv6 \
+    -- "$temporary_directory/mock-uml-ipv6" \
+    >"$temporary_directory/stdout6d" 2>"$temporary_directory/stderr6d"
+status=$?
+if [ "$status" -ne 0 ]; then
+    cat "$temporary_directory/stdout6d" "$temporary_directory/stderr6d" >&2
+    exit 1
+fi
+if ! grep -Eq '^v4 .* -D none( |$)' "$argv_file"; then
+    cat "$argv_file" >&2
+    echo 'umnet did not pass -D none to the IPv4 helper' >&2
+    exit 1
+fi
+if grep -Eq '^v6 .* -D none( |$)' "$argv_file"; then
+    cat "$argv_file" >&2
+    echo '--dns none leaked into the IPv6 helper resolver' >&2
     exit 1
 fi
 

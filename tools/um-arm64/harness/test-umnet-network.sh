@@ -369,6 +369,14 @@ def run_gate(args):
     ipv6_section = guest_ipv6_section(args) if args.ipv6 else ""
     if not args.keep_guest_command:
         write_guest_command(netroot, ipv6_section)
+    if args.dns == "none" and not args.keep_guest_command:
+        # udhcpc leaves /etc/resolv.conf behind from a previous round.  For a
+        # "the guest was told no resolver" verdict the baseline has to be
+        # empty, or a stale file from an earlier run decides the result.
+        try:
+            os.unlink(os.path.join(netroot, "etc", "resolv.conf"))
+        except FileNotFoundError:
+            pass
     log_path = os.path.join(args.workdir, args.log)
     cmd = [umnet, "--passt", passt]
     if args.passt_pid_file:
@@ -379,8 +387,12 @@ def run_gate(args):
     if args.ipv6:
         cmd += ["--ipv6", "--ipv6-addr", args.ipv6_addr,
                 "--ipv6-gw", args.ipv6_gw]
-        if args.ipv6_dns != "none":
-            cmd += ["--ipv6-dns", args.ipv6_dns]
+        # "none" is forwarded too: the bridge documents --ipv6-dns none as
+        # "announce no resolver", and a gate that cannot express an option
+        # cannot verify it.  This used to be dropped, so the IPv6 helper fell
+        # back to the host/public resolver while the gate believed it was off
+        # and skipped the checks that would have noticed.
+        cmd += ["--ipv6-dns", args.ipv6_dns]
     cmd += ["--dns", args.dns, "--", kernel,
            "mem=512M", "rw", "init=/um-init", "con=null", "con0=fd:0,fd:1",
            "stub_exe=" + stub, "rootfstype=hostfs", "rootflags=" + netroot,
@@ -416,16 +428,25 @@ def run_gate(args):
         ("dhcp", r"lease of 10\.0\.2\.15 obtained from 10\.0\.2\.2"),
         ("addr", r"inet 10\.0\.2\.15/24"),
         ("route", r"default via 10\.0\.2\.2 dev vec0"),
-        # Any announced resolver proves the handshake; asserting a specific
-        # address would fail on a network that blocks that one and say nothing
-        # about the build.
-        ("dns-config", r"nameserver \d+\.\d+\.\d+\.\d+"),
         ("icmp", r"2 packets transmitted, 2 packets received"),
-        ("dns-lookup", r"Name:\s*example\.com\s*\nAddress:\s*\d+\.\d+\.\d+\.\d+"),
-        ("tcp", r"Example Domain"),
-        ("concurrent", r"NET_CONCURRENT_RC=0"),
         ("clean-exit", r"UM_NET_COMMAND_EXIT=0"),
     ]
+    if args.dns == "none":
+        # No resolver was announced, so there is nothing to look up and no name
+        # to fetch over TCP.  Judge that instead of pretending the lookups are
+        # meaningful: the guest must end up with no IPv4 nameserver at all.
+        checks.append(("dns-none", None))
+    else:
+        checks += [
+            # Any announced resolver proves the handshake; asserting a
+            # specific address would fail on a network that blocks that one
+            # and say nothing about the build.
+            ("dns-config", r"nameserver \d+\.\d+\.\d+\.\d+"),
+            ("dns-lookup",
+             r"Name:\s*example\.com\s*\nAddress:\s*\d+\.\d+\.\d+\.\d+"),
+            ("tcp", r"Example Domain"),
+            ("concurrent", r"NET_CONCURRENT_RC=0"),
+        ]
     if args.ipv6:
         # Link-level checks are the bridge's: an address, a route and an echo
         # to passt's own gateway.  They must pass wherever the guest kernel
@@ -446,7 +467,19 @@ def run_gate(args):
                 ("ipv6-tcp", r"NET_IPV6_TCP_OK=1"),
             ]
     results = [(name, re.search(pattern, text) is not None)
-               for name, pattern in checks]
+               for name, pattern in checks if pattern is not None]
+    for name, pattern in checks:
+        if pattern is None and name == "dns-none":
+            results.append(("dns-none", re.search(
+                r"nameserver\s+\d+\.\d+\.\d+\.\d+", text) is None))
+    # Each passt helper prints one "DNS:" block when it announces resolvers, so
+    # the number of blocks in the log is per-helper evidence that --dns and
+    # --ipv6-dns reached the processes, not just the guest-visible half.  The
+    # two helpers share the pty, so a line can hold both blocks ("DNS:DNS:"):
+    # count occurrences, not lines.
+    expected_dns_blocks = (0 if args.dns == "none" else 1) + (
+        1 if args.ipv6 and args.ipv6_dns != "none" else 0)
+    results.append(("helper-dns", text.count("DNS:") == expected_dns_blocks))
     for name, passed in results:
         print("gate: %-12s %s" % (name, "ok" if passed else "MISSING"),
               file=sys.stderr)
@@ -500,7 +533,11 @@ def main():
                              "1.1.1.1).  Some networks block plain DNS to "
                              "particular resolvers, which breaks the guest's "
                              "lookups without anything being wrong with the "
-                             "build; pass a resolver this network reaches.")
+                             "build; pass a resolver this network reaches.  "
+                             "'none' announces no IPv4 resolver: the checks "
+                             "that need one (resolver config, lookup, TCP by "
+                             "name, concurrency) are replaced by an assertion "
+                             "that the guest ends up with no nameserver.")
     parser.add_argument("--ipv6", action="store_true",
                         help="also give the guest IPv6, served by a second, "
                              "IPv6-only passt (see doc/90-networking.md)")

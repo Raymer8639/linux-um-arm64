@@ -9,6 +9,10 @@ protocol=
 mount_proc() { mount -t proc proc /proc 2>/dev/null || test -r /proc/self/status; }
 mount_sys() { mount -t sysfs sysfs /sys 2>/dev/null || test -d /sys/kernel; }
 mount_dev() { mount -t devtmpfs devtmpfs /dev 2>/dev/null || test -c /dev/null; }
+# cgroup v2 is what container runtimes expect.  Best effort: the kernel may
+# have been built without cgroups, and boot must not depend on a feature the
+# caller did not ask for.  cgroup.controllers is the proof the mount worked.
+mount_cgroup() { mkdir -p /sys/fs/cgroup 2>/dev/null; mount -t cgroup2 none /sys/fs/cgroup 2>/dev/null || test -f /sys/fs/cgroup/cgroup.controllers; }
 # devtmpfs provides /dev/ptmx but not /dev/pts.  Without devpts, allocating a
 # pty fails with ENXIO ("unable to allocate pty"), which breaks sudo, sshd,
 # screen and anything else that opens a terminal of its own.
@@ -21,6 +25,7 @@ if ! mount_proc || ! mount_sys || ! mount_dev || ! mount_pts; then
     printf '%s\n' 'UM_SESSION_ERROR=125'
     power_down
 fi
+mount_cgroup
 
 cmdline=$(cat /proc/cmdline 2>/dev/null || true)
 remaining=$cmdline

@@ -127,6 +127,12 @@ rc=${PIPESTATUS[0]}
 if [ "$rc" = 0 ] && [ -f "$O/linux" ]; then
     cp -f "$O/linux" "$ART/linux-bionic"
     cp -f "$O/arch/um/kernel/skas/stub_exe" "$ART/stub_exe_bionic" 2>/dev/null
+    # Keep the release asset small.  The kernel is routinely built with
+    # CONFIG_DEBUG_INFO for development, but the debug sections are not used by
+    # the loader at run time; stripping them took one device build from 136 MiB
+    # to 13 MiB without changing boot time.  Keep the symbol table (kallsyms is
+    # generated separately) and only remove debug information.
+    "$TOOL/llvm-strip" --strip-debug "$ART/linux-bionic" 2>/dev/null || true
     echo "linux-bionic: $(file -b "$ART/linux-bionic" | cut -c1-90)"
     echo "md5=$(md5sum "$ART/linux-bionic" | cut -c1-8) stub=$(md5sum "$ART/stub_exe_bionic" 2>/dev/null | cut -c1-8)"
 fi

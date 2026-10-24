@@ -28,7 +28,8 @@ one commit, with one NDK, against one Android API level:
 
 | asset | required | what it is |
 | --- | --- | --- |
-| `linux-bionic` | yes | the UML kernel, static bionic, aarch64 |
+| `linux-bionic` | yes | the UML kernel, static bionic, aarch64 (UP/fast profile) |
+| `linux-bionic-smp` | no | SMP + Docker kernel profile; same source, different config |
 | `stub_exe` | yes | the userspace stub the kernel execs for every guest |
 | `umnet` | yes | the vector-fd bridge between UML and passt |
 | `passt-bionic` | no | a companion passt, shipped when it was built alongside |
@@ -137,7 +138,8 @@ CI cannot do steps 5-9: they need a phone.
 ### Human, on the Termux host -- the part CI cannot do
 
 5. **Rebuild the assets from the commit being released** (`linux-bionic`,
-   `stub_exe`, `umnet`, and the companion `passt-bionic`). The manifest hashes
+   optional `linux-bionic-smp`, `stub_exe`, `umnet`, and the companion
+   `passt-bionic`). The manifest hashes
    come from these binaries, so they must be built from the released commit,
    not from a working tree with local changes.
 6. **Run the network gate and archive the run**:

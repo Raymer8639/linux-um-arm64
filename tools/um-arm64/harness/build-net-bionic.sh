@@ -17,9 +17,9 @@
 # Unlike the kernel, neither helper has a kbuild to shim, so this script drives
 # the NDK compiler directly. What it has to work around instead is passt's
 # source: it was written for glibc and musl, and bionic differs from both in
-# several headers. Those differences are fixed in the sources themselves and
-# kept as dist/passt-bionic.patch, which explains each hunk; this script only
-# makes sure the patch is applied to whatever tree it builds.
+# several headers. Those differences are kept as passt-bionic.patch beside
+# this script (generated against upstream df90211), and this script applies it
+# to whatever tree it builds; each hunk says why it is there.
 #
 # The result is two static binaries. Static because Android has no dynamic
 # loader available to an app, and an app may only exec from its
@@ -101,9 +101,11 @@ fi
 CC="$TOOL/clang --target=aarch64-linux-android$API"
 
 # umnet is this repository's own source, so it always builds.  passt is a
-# separate project that needs the bionic patch, and that patch is not in this
-# repository -- so a missing one is reported as "passt was skipped" rather than
-# taken as a broken checkout.
+# separate project that needs the bionic patch; the patch ships beside this
+# script (against upstream df90211), so a checkout plus the patch reproduces
+# the release passt-bionic.  A missing checkout or patch is reported as
+# "passt was skipped" rather than taken as a broken tree, because umnet alone
+# is still useful.
 BUILD_PASST=yes
 if [ ! -d "$SRC" ]; then
     echo "build-net-bionic.sh: no passt checkout at $SRC (set SRC=); skipping passt" >&2

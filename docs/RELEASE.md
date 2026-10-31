@@ -31,7 +31,7 @@ one commit, with one NDK, against one Android API level:
 | `linux-bionic` | yes | the UML kernel, static bionic, aarch64 |
 | `stub_exe` | yes | the userspace stub the kernel execs for every guest |
 | `umnet` | yes | the vector-fd bridge between UML and passt |
-| `passt-bionic` | no | a companion passt, shipped when it was built alongside |
+| `passt-bionic` | no | a companion passt, built from upstream `df90211` with `harness/passt-bionic.patch` |
 
 Every asset is checked for the two properties that actually matter on Android:
 **aarch64** (an x86_64 binary under an arm64 tag is useless) and **static**

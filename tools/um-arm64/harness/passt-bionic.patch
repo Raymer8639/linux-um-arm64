@@ -1,0 +1,406 @@
+diff --git a/android_compat.h b/android_compat.h
+new file mode 100644
+index 0000000..640452f
+--- /dev/null
++++ b/android_compat.h
+@@ -0,0 +1,27 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef PASST_ANDROID_COMPAT_H
++#define PASST_ANDROID_COMPAT_H
++
++#ifdef __ANDROID__
++#include <inttypes.h>
++#include <netinet/udp.h>
++
++#ifndef MAXNS
++#define MAXNS 3
++#endif
++#ifndef MAXDNSRCH
++#define MAXDNSRCH 6
++#endif
++#ifndef _PATH_LOG
++#define _PATH_LOG "/dev/log"
++#endif
++
++/* bionic's macro expects glibc's in6_addr union layout. */
++#ifdef IN6_IS_ADDR_UNSPECIFIED
++#undef IN6_IS_ADDR_UNSPECIFIED
++#endif
++#define IN6_IS_ADDR_UNSPECIFIED(a) \
++    (memcmp((a), (const uint8_t[16]){ 0 }, 16) == 0)
++#endif
++
++#endif /* PASST_ANDROID_COMPAT_H */
+diff --git a/common.h b/common.h
+index 16b9dc8..afef78e 100644
+--- a/common.h
++++ b/common.h
+@@ -9,6 +9,7 @@
+ #define COMMON_H
+ 
+ #include <string.h>
++#include "android_compat.h"
+ 
+ #define VERSION_BLOB							       \
+ 	VERSION "\n"							       \
+diff --git a/conf.c b/conf.c
+index 149a4c7..107c463 100644
+--- a/conf.c
++++ b/conf.c
+@@ -1329,6 +1329,7 @@ void conf(struct ctx *c, int argc, char **argv)
+ 	unsigned long max_mtu = IP_MAX_MTU;
+ 	struct fqdn *dnss = c->dns_search;
+ 	unsigned int ifi4 = 0, ifi6 = 0;
++	bool fd_local_mode;
+ 	bool opt_a_is_prefix = false;
+ 	const char *logfile = NULL;
+ 	char *runas = NULL;
+@@ -1851,11 +1852,50 @@ void conf(struct ctx *c, int argc, char **argv)
+ 
+ 	log_conf_parsed = true;		/* Stop printing everything */
+ 
+-	nl_sock_init(c, false);
+-	if (!v6_only && !c->splice_only)
+-		c->ifi4 = conf_ip4(ifi4, &c->ip4);
+-	if (!v4_only && !c->splice_only)
+-		c->ifi6 = conf_ip6(ifi6, &c->ip6);
++	/* Android may deny route netlink to an unprivileged app. A prepatched
++	 * --fd endpoint does not need host interface discovery: all guest-side
++	 * values are supplied explicitly by the caller, for IPv4 and IPv6
++	 * alike, so the netlink socket is not opened at all in this mode.
++	 *
++	 * The predicate is fd_prepatched(), the same one isolation.c uses to
++	 * decide whether to skip the sandbox -- not "an --fd was given". --fd
++	 * is an ordinary upstream option, and a caller that did not opt in
++	 * must get the upstream route (netlink plus isolation) even when its
++	 * descriptor is not a socket. Keying this off fd_tap alone would hand
++	 * such a caller local-mode configuration while isolation still ran:
++	 * half of the prepatched behaviour, and a failure that names neither
++	 * the option nor the cause. */
++	fd_local_mode = c->mode == MODE_PASST && fd_prepatched(c) &&
++			!c->splice_only;
++	if (!fd_local_mode)
++		nl_sock_init(c, false);
++	if (fd_local_mode) {
++		if (!v6_only) {
++			conf_ip4_local(&c->ip4);
++			c->ifi4 = -1;
++		} else {
++			c->ifi4 = 0;
++		}
++
++		if (!v4_only) {
++			/* Only IPv6 is enabled (-6), so nothing else can
++			 * supply the guest address.  The local-mode default is
++			 * a link-local value, which is not what a caller
++			 * asking for IPv6 wants: refuse instead of silently
++			 * handing the guest an address it never asked for. */
++			if (v6_only && IN6_IS_ADDR_UNSPECIFIED(&c->ip6.addr))
++				die("--fd with IPv6 needs an explicit -a address");
++			conf_ip6_local(&c->ip6);
++			c->ifi6 = -1;
++		} else {
++			c->ifi6 = 0;
++		}
++	} else {
++		if (!v6_only && !c->splice_only)
++			c->ifi4 = conf_ip4(ifi4, &c->ip4);
++		if (!v4_only && !c->splice_only)
++			c->ifi6 = conf_ip6(ifi6, &c->ip6);
++	}
+ 
+ 	if (c->ifi4 && c->mtu < IPV4_MIN_MTU) {
+ 		warn("MTU %"PRIu16" is too small for IPv4 (minimum %u)",
+@@ -1884,6 +1924,9 @@ void conf(struct ctx *c, int argc, char **argv)
+ 	}
+ 
+ 	if (!c->ifi6 && !v4_only) {
++		/* The equivalent check for local mode already ran above, where
++		 * the local-mode branch sets ifi6 = -1 for every IPv6-enabled
++		 * context -- so this block cannot execute in that case. */
+ 		if (!c->splice_only) {
+ 			info("IPv6: no external interface as template, use local mode");
+ 			conf_ip6_local(&c->ip6);
+@@ -1934,7 +1977,8 @@ void conf(struct ctx *c, int argc, char **argv)
+ 
+ 	conf_open_files(c);	/* Before any possible setuid() / setgid() */
+ 
+-	isolate_user(c, uid, gid, !netns_only, userns);
++	if (!fd_prepatched(c))
++		isolate_user(c, uid, gid, !netns_only, userns);
+ 
+ 	if (c->no_icmp)
+ 		c->no_ndp = 1;
+diff --git a/ip.h b/ip.h
+index aab9b86..55faa47 100644
+--- a/ip.h
++++ b/ip.h
+@@ -64,6 +64,7 @@
+ 		.daddr		= IN6ADDR_ANY_INIT,			\
+ 	}
+ 
++#ifndef __ANDROID__
+ struct ipv6hdr {
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Wpedantic"
+@@ -92,6 +93,7 @@ struct ipv6_opt_hdr {
+ 	 * TLV encoded option data follows.
+ 	 */
+ } __attribute__((packed));	/* required for some archs */
++#endif /* !__ANDROID__ */
+ 
+ /**
+  * ip6_set_flow_lbl() - Set flow label in an IPv6 header
+diff --git a/isolation.c b/isolation.c
+index a00475f..85d80c5 100644
+--- a/isolation.c
++++ b/isolation.c
+@@ -78,6 +78,7 @@
+ #include <sys/mount.h>
+ #include <sys/prctl.h>
+ #include <sys/socket.h>
++#include <sys/stat.h>
+ #include <sys/syscall.h>
+ #include <sys/types.h>
+ #include <netinet/in.h>
+@@ -384,6 +385,18 @@ void isolate_user(const struct ctx *c, uid_t uid, gid_t gid, bool use_userns,
+ {
+ 	uint64_t ns_caps = 0;
+ 
++	/* A prepatched AF_UNIX endpoint is only ever handed to us by a parent
++	 * that already owns the isolation: there is no host interface to
++	 * discover, no routing to set up, and no capability we could use.
++	 * Android in particular denies both setgroups(2) and user namespace
++	 * creation outright, so the whole user/namespace dance is both
++	 * unnecessary and impossible there.
++	 */
++	if (fd_prepatched(c)) {
++		debug("Prepatched socket endpoint: skipping user namespace setup");
++		return;
++	}
++
+ 	/* First set our UID & GID in the original namespace */
+ 	if (setgroups(0, NULL)) {
+ 		/* If we don't have CAP_SETGID, this will EPERM */
+@@ -479,6 +492,17 @@ int isolate_prefork(const struct ctx *c)
+ 	int flags = CLONE_NEWIPC | CLONE_NEWNS | CLONE_NEWUTS;
+ 	uint64_t ns_caps = 0;
+ 
++	/* An inherited socket endpoint means the caller owns the interface and
++	 * our lifetime, and the host may not let us create namespaces at all
++	 * (Android denies CLONE_NEWNS to app processes).  Our own mount and
++	 * IPC namespaces buy nothing here: the descriptor is already open and
++	 * we never touch the filesystem again after startup.
++	 */
++	if (fd_prepatched(c)) {
++		debug("Prepatched socket endpoint: skipping namespace isolation");
++		goto caps;
++	}
++
+ 	/* If we run in foreground, we have no chance to actually move to a new
+ 	 * PID namespace. For passt, use CLONE_NEWPID anyway, in case somebody
+ 	 * ever gets around seccomp profiles -- there's no harm in passing it.
+@@ -528,6 +552,7 @@ int isolate_prefork(const struct ctx *c)
+ 	/* Now that initialization is more-or-less complete, we can
+ 	 * drop further capabilities
+ 	 */
++caps:
+ 	if (c->mode == MODE_PASTA) {
+ 		/* Keep CAP_SYS_ADMIN, so we can enter the netns */
+ 		ns_caps |= BIT(CAP_SYS_ADMIN);
+diff --git a/passt.c b/passt.c
+index 5054551..cbe3633 100644
+--- a/passt.c
++++ b/passt.c
+@@ -421,7 +421,13 @@ int main(int argc, char **argv)
+ 	pcap_init(c);
+ 
+ 	fwd_neigh_table_init(c);
+-	nl_neigh_notify_init(c);
++	/* Neighbour notifications come from netlink, which a prepatched
++	 * endpoint does not have: conf() skipped nl_sock_init() for exactly
++	 * that case.  Use the same predicate for the same reason -- an --fd
++	 * that is not prepatched (no opt-in, or not a connected socket) still
++	 * takes the upstream route and needs the notifications. */
++	if (!fd_prepatched(c))
++		nl_neigh_notify_init(c);
+ 
+ 	if (isolate_prefork(c))
+ 		die("Failed to sandbox process, exiting");
+diff --git a/tcp.c b/tcp.c
+index 3b78d2e..3652e7a 100644
+--- a/tcp.c
++++ b/tcp.c
+@@ -327,7 +327,7 @@
+  */
+ #define OPTLEN_MAX (((1UL << 4) - 1 - 5) * 4UL)
+ 
+-#ifndef __USE_MISC
++#if !defined(__ANDROID__) && !defined(__USE_MISC)
+ /* From Linux UAPI, missing in netinet/tcp.h provided by musl */
+ struct tcp_repair_opt {
+ 	__u32	opt_code;
+diff --git a/util.c b/util.c
+index c02aea9..31199af 100644
+--- a/util.c
++++ b/util.c
+@@ -18,6 +18,7 @@
+ #include <unistd.h>
+ #include <arpa/inet.h>
+ #include <net/ethernet.h>
++#include <sys/stat.h>
+ #include <sys/uio.h>
+ #include <fcntl.h>
+ #include <string.h>
+@@ -389,8 +390,14 @@ bool ns_is_init(void)
+ 	bool ret = true;
+ 	int fd;
+ 
+-	if ((fd = open("/proc/self/uid_map", O_RDONLY | O_CLOEXEC)) < 0)
++	if ((fd = open("/proc/self/uid_map", O_RDONLY | O_CLOEXEC)) < 0) {
++#ifdef __ANDROID__
++		/* Termux may hide uid_map; treat the app namespace as init. */
++		return true;
++#else
+ 		die_perror("Can't determine if we're in init namespace");
++#endif
++	}
+ 
+ 	if (read(fd, buf, sizeof(root_uid_map)) != sizeof(root_uid_map) - 1 ||
+ 	    strncmp(buf, root_uid_map, sizeof(root_uid_map)))
+@@ -1111,6 +1118,70 @@ long clamped_scale(long x, long y, long lo, long hi, long f)
+ 	return x - (x * (y - lo) / (hi - lo)) * (100 - f) / 100;
+ }
+ 
++/**
++ * fd_prepatched() - Is the interface descriptor an inherited socket?
++ * @c:		Execution context
++ *
++ * A parent that set up our interface for us (a VMM, an UML harness, a
++ * sandboxed app) hands it over as one end of a socketpair.  Such a
++ * descriptor has no filesystem path and needs no host interface, which is
++ * the only configuration in which passt can run with no capability and no
++ * namespace of its own.
++ *
++ * Return: true if the descriptor is an unnamed socket, false otherwise
++ */
++bool fd_prepatched(const struct ctx *c)
++{
++	static int allowed = -1;
++	struct stat st;
++	struct sockaddr_storage peer;
++	socklen_t peerlen = sizeof(peer);
++
++	if (c->fd_tap < 0)
++		return false;
++
++	/*
++	 * Skipping isolation is only safe for a socket endpoint handed over by a
++	 * parent that already owns the sandbox.  It is also the only thing that
++	 * works on Android, which denies the namespaces and setgroups calls the
++	 * isolation steps make.
++	 *
++	 * It must not happen by accident in a normal build: `--fd` is an ordinary
++	 * upstream option, and a root process given a socket there is expected to
++	 * drop to nobody and pivot_root like any other passt.  The parent opts in
++	 * explicitly, so a caller that does not ask keeps upstream behaviour.
++	 */
++	if (allowed < 0) {
++		const char *opt = getenv("PASST_ANDROID_NO_ISOLATION");
++
++		allowed = opt && (!strcmp(opt, "1") || !strcmp(opt, "yes"));
++	}
++	if (!allowed)
++		return false;
++
++	if (fstat(c->fd_tap, &st))
++		return false;
++
++	if (!S_ISSOCK(st.st_mode))
++		return false;
++
++	/*
++	 * The descriptor must be a *connected* socket.  Without this a listening
++	 * or unconnected fd looks prepatched, the isolation is skipped, and the
++	 * failure only appears later in the event loop with a message that names
++	 * neither the option nor the cause.
++	 *
++	 * getpeername() is the test, not SO_ERROR: SO_ERROR reads 0 for a
++	 * connected, an unconnected, a listening and a datagram AF_UNIX socket
++	 * alike, so it cannot tell them apart.  An unconnected or listening
++	 * socket has no peer and getpeername() fails with ENOTCONN.
++	 */
++	if (getpeername(c->fd_tap, (struct sockaddr *)&peer, &peerlen))
++		return false;
++
++	return true;
++}
++
+ /**
+  * make_ugid_map() - Create userns UID & GID mappings
+  * @pid:	PID of process owning the userns, or 0 for self
+@@ -1144,8 +1215,24 @@ void make_ugid_map(pid_t pid, uid_t uid, gid_t gid)
+ 	if (snprintf_check(gidmap, BUFSIZ, "0 %u 1", gid))
+ 		die_perror("Can't build gidmap");
+ 
+-	if (write_file(uidmap_path, uidmap) ||
+-	    write_file(setgroups_path, "deny") ||
+-	    write_file(gidmap_path, gidmap))
++	if (write_file(uidmap_path, uidmap))
++		die("Couldn't configure user mappings");
++
++	/* The order matters and is not optional: for an unprivileged caller the
++	 * gid map is only writable after "deny" has been written to setgroups.
++	 * Writing it afterwards made pasta fail with "Couldn't configure user
++	 * mappings" instead of starting, which is the opposite of the intended
++	 * Android tolerance.
++	 *
++	 * That tolerance still applies where the file is absent or refused: Linux
++	 * before 3.19 has no setgroups, and some sandboxes (Android included) deny
++	 * it.  Failure is only acceptable when writing it was not what made the
++	 * gid map writable, so it is attempted first and its error is kept, not
++	 * fatal -- but a gid_map failure after a *successful* setgroups write is
++	 * reported as the mapping error it is.
++	 */
++	(void)write_file(setgroups_path, "deny");
++
++	if (write_file(gidmap_path, gidmap))
+ 		die("Couldn't configure user mappings");
+ }
+diff --git a/util.h b/util.h
+index ec2d9ac..dfde65a 100644
+--- a/util.h
++++ b/util.h
+@@ -291,5 +291,6 @@ static inline int wrap_getsockname(int sockfd, struct sockaddr *addr,
+ void encode_domain_name(char *buf, const char *domain_name);
+ 
+ void make_ugid_map(pid_t pid, uid_t uid, gid_t gid);
++bool fd_prepatched(const struct ctx *c);
+ 
+ #endif /* UTIL_H */
+diff --git a/virtio.c b/virtio.c
+index d7016cc..85dc9ed 100644
+--- a/virtio.c
++++ b/virtio.c
+@@ -306,6 +306,12 @@ static bool vu_queue_empty(struct vu_virtq *vq)
+  *
+  * Return: true if notification can be sent
+  */
++static inline bool passt_vring_need_event(uint16_t event, uint16_t new,
++                                      uint16_t old)
++{
++	return (uint16_t)(new - event - 1) < (uint16_t)(new - old);
++}
++
+ static bool vring_can_notify(const struct vu_dev *dev, struct vu_virtq *vq)
+ {
+ 	uint16_t old, new;
+@@ -326,7 +332,7 @@ static bool vring_can_notify(const struct vu_dev *dev, struct vu_virtq *vq)
+ 	vq->signalled_used_valid = true;
+ 	old = vq->signalled_used;
+ 	new = vq->signalled_used = vq->used_idx;
+-	return !v || vring_need_event(vring_get_used_event(vq), new, old);
++	return !v || passt_vring_need_event(vring_get_used_event(vq), new, old);
+ }
+ 
+ /**

@@ -41,6 +41,7 @@
 *.o
 *.o.*
 *.patch
+!tools/um-arm64/harness/passt-bionic.patch
 *.pyc
 *.rlib
 *.rmeta

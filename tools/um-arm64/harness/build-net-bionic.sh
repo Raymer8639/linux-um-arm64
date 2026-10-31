@@ -27,11 +27,43 @@
 # kernel.
 set -uo pipefail
 
+# Every path below is derived from where this script is, or taken from the
+# environment, the same way harness/build-bionic.sh does it.  They used to
+# name one particular checkout (/root/mlu-arm64), which made the script
+# unusable anywhere else -- including CI, which is where the release runtime
+# comes from.
+HERE=$(cd "$(dirname "$0")" && pwd)
+# <repo>/harness, or <linux>/tools/um-arm64/harness when imported into a tree.
+if [ -f "$HERE/../linux/Makefile" ]; then
+    REPO=$(cd "$HERE/.." && pwd)
+elif [ -f "$HERE/../../../Makefile" ]; then
+    REPO=$(cd "$HERE/../../.." && pwd)
+else
+    REPO=$(cd "$HERE/.." && pwd)
+fi
+
 SRC=${SRC:-/tmp/passt}			# passt checkout, patched or pristine
-UMNET=${UMNET:-/root/mlu-arm64/harness/umnet.c}
-PATCH=${PATCH:-/root/mlu-arm64/dist/passt-bionic.patch}
-ART=${ART:-/root/mlu-arm64/artifacts}
-NDK=${NDK:-/tmp/ndk/android-ndk-r27c}
+UMNET=${UMNET:-$HERE/umnet.c}
+# The patch ships beside the harness in the release tree and in dist/ in the
+# maintainer's; take whichever exists.
+if [ -z "${PATCH:-}" ]; then
+    for candidate in "$HERE/passt-bionic.patch" "$REPO/dist/passt-bionic.patch"; do
+        [ -f "$candidate" ] && PATCH=$candidate && break
+    done
+    PATCH=${PATCH:-$HERE/passt-bionic.patch}
+fi
+ART=${ART:-$REPO/artifacts}
+
+# Find the NDK rather than insisting on one path, like build-bionic.sh.
+if [ -z "${NDK:-}" ]; then
+    for c in "${ANDROID_NDK_HOME:-}" "${ANDROID_NDK_ROOT:-}" \
+             "$HOME"/Android/Sdk/ndk/* "$HOME"/Library/Android/sdk/ndk/* \
+             /usr/lib/android-ndk /opt/android-ndk* \
+             "${TMPDIR:-/tmp}"/ndk/android-ndk-*; do
+        [ -n "$c" ] && [ -x "$c/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ] \
+            && NDK=$c
+    done
+fi
 # Same level the kernel is built at, for the same reason: 30 is the oldest
 # bionic that declares everything used directly. The phone is API 35.
 API=${API:-30}
@@ -66,6 +98,19 @@ if [ ! -x "$TOOL/clang" ]; then
     exit 2
 fi
 CC="$TOOL/clang --target=aarch64-linux-android$API"
+
+# umnet is this repository's own source, so it always builds.  passt is a
+# separate project that needs the bionic patch, and that patch is not in this
+# repository -- so a missing one is reported as "passt was skipped" rather than
+# taken as a broken checkout.
+BUILD_PASST=yes
+if [ ! -d "$SRC" ]; then
+    echo "build-net-bionic.sh: no passt checkout at $SRC (set SRC=); skipping passt" >&2
+    BUILD_PASST=no
+elif [ ! -f "$PATCH" ]; then
+    echo "build-net-bionic.sh: no passt bionic patch at $PATCH (set PATCH=); skipping passt" >&2
+    BUILD_PASST=no
+fi
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 LOG=$ART/build-net-bionic-$STAMP.log
@@ -109,6 +154,18 @@ $CC -O2 -Wall -Wextra -static -Wl,-z,max-page-size="$PAGE" \
     -o "$O/umnet" "$UMNET" 2>&1 | tee -a "$LOG"
 rc=${PIPESTATUS[0]}
 [ "$rc" = 0 ] || { echo "umnet build failed rc=$rc log=$LOG"; exit "$rc"; }
+
+if [ "$BUILD_PASST" = no ]; then
+    # umnet alone is still useful: it is the UML side of the pair, and the
+    # caller may already have a passt.  Say what was built and stop cleanly
+    # instead of failing the whole script.
+    check_bin "$O/umnet" || exit 1
+    cp -f "$O/umnet" "$ART/umnet_bionic"
+    echo "umnet_bionic: $(file -b "$ART/umnet_bionic" | cut -c1-90)" | tee -a "$LOG"
+    echo "passt_bionic: skipped (no checkout or patch; set SRC= and PATCH=)" | tee -a "$LOG"
+    echo "net helpers bionic build rc=0 (umnet only) log=$LOG"
+    exit 0
+fi
 
 ### passt
 #
@@ -164,3 +221,4 @@ cp -f "$O/passt-src/passt" "$ART/passt_bionic"
 } | tee -a "$LOG"
 echo "net helpers bionic build rc=0 log=$LOG"
 exit 0
+

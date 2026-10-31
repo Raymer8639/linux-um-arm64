@@ -137,10 +137,21 @@ check_bin() {
 	echo "$f: has PT_INTERP, not usable in an app" >&2
 	return 1
     fi
+    # The machine and the link style come from file(1); "is this a bionic
+    # binary" does not, because file's Android detection varies by version --
+    # one build reports "for Android 30", another truncates it to "for Android 3"
+    # and a third says nothing.  The NDK stamps an Android note instead, and
+    # readelf reports it the same everywhere.
     case "$(file -b "$f")" in
-    *"ARM aarch64"*"statically linked"*"for Android"*)	;;
+    *"ARM aarch64"*)	;;
     *)	echo "$f: unexpected: $(file -b "$f")" >&2; return 1 ;;
     esac
+    if "$TOOL/llvm-readelf" -l "$f" | grep -q 'INTERP'; then
+	echo "$f: is dynamically linked" >&2; return 1
+    fi
+    if ! "$TOOL/llvm-readelf" -n "$f" 2>/dev/null | grep -qi 'android'; then
+	echo "$f: has no Android ABI note: $(file -b "$f")" >&2; return 1
+    fi
     for align in $("$TOOL/llvm-readelf" -l "$f" | awk '$1 == "LOAD" { print $NF }'); do
 	if [ "$((align))" -lt "$PAGE" ]; then
 	    echo "$f: LOAD aligned $align < $PAGE, will not load on a $PAGE-page kernel" >&2

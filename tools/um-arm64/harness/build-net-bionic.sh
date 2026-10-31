@@ -57,7 +57,8 @@ ART=${ART:-$REPO/artifacts}
 # Find the NDK rather than insisting on one path, like build-bionic.sh.
 if [ -z "${NDK:-}" ]; then
     for c in "${ANDROID_NDK_HOME:-}" "${ANDROID_NDK_ROOT:-}" \
-             "$HOME"/Android/Sdk/ndk/* "$HOME"/Library/Android/sdk/ndk/* \
+             "${HOME:-/nonexistent}"/Android/Sdk/ndk/* \
+             "${HOME:-/nonexistent}"/Library/Android/sdk/ndk/* \
              /usr/lib/android-ndk /opt/android-ndk* \
              "${TMPDIR:-/tmp}"/ndk/android-ndk-*; do
         [ -n "$c" ] && [ -x "$c/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ] \

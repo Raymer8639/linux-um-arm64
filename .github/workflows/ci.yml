@@ -73,6 +73,49 @@ jobs:
           fi
           readelf -h "$RUNNER_TEMP/umnet" | grep -q AArch64
 
+      # The companion passt is a separate project, so check that its patch
+      # still applies to the pinned upstream revision and that the patched
+      # source remains buildable for bionic.
+      - name: Check the passt patch applies and builds for Android
+        run: |
+          set -eux
+          PATCH=tools/um-arm64/harness/passt-bionic.patch
+          test -f "$PATCH"
+          # Bump this revision together with the patch when rebasing it.
+          git clone -q --filter=blob:none https://github.com/qemus/passt.git "$RUNNER_TEMP/passt"
+          git -C "$RUNNER_TEMP/passt" checkout -q df90211db4b08a06ed4e499ffa40bf8811100a2f
+          git -C "$RUNNER_TEMP/passt" apply --check "$GITHUB_WORKSPACE/$PATCH"
+          git -C "$RUNNER_TEMP/passt" apply "$GITHUB_WORKSPACE/$PATCH"
+          git -C "$RUNNER_TEMP/passt" apply --reverse --check "$GITHUB_WORKSPACE/$PATCH"
+          cd "$RUNNER_TEMP/passt"
+          TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          make CC="$TOOL/clang --target=aarch64-linux-android30" \
+               ARCH=aarch64 TARGET=aarch64-linux-android \
+               VERSION=pinned-bionic \
+               CFLAGS="-static -Wl,-z,max-page-size=16384" \
+               CPPFLAGS="-UPAGE_SIZE -DPAGE_SIZE=16384" \
+               passt >"$RUNNER_TEMP/passt-build.log" 2>&1 || {
+            tail -50 "$RUNNER_TEMP/passt-build.log" >&2; exit 1; }
+          file passt
+          file passt | grep -q 'ARM aarch64'
+          file passt | grep -q 'statically linked'
+          if "$TOOL/llvm-readelf" -l passt | grep -q INTERP; then
+            echo "passt has an interpreter (not static)" >&2
+            exit 1
+          fi
+          if ! "$TOOL/llvm-readelf" -n passt 2>/dev/null | grep -qi android; then
+            echo "passt has no Android ABI note" >&2
+            exit 1
+          fi
+          LOAD_ALIGNMENTS=$("$TOOL/llvm-readelf" -l passt | awk '$1 == "LOAD" { print $NF }')
+          test -n "$LOAD_ALIGNMENTS"
+          for align in $LOAD_ALIGNMENTS; do
+            if [ "$((align))" -lt 16384 ]; then
+              echo "passt has LOAD alignment $align < 16384 (16 KiB)" >&2
+              exit 1
+            fi
+          done
+
   harness-checks:
     runs-on: ubuntu-24.04
     steps:

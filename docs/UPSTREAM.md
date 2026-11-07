@@ -53,3 +53,24 @@ At the initial project setup on 2026-10-03, the observed official refs were:
 | `fixes` | `af421e9aed3920c7ac88c24daa48606c7112feca` |
 
 These are an observation record, not a replacement for fetching the refs.
+
+## Baseline Record
+
+| Date | Baseline | Commit | Notes |
+|---|---|---|---|
+| 2026-10-03 | uml/next, Linux 7.2-rc4 | `1590cf0329716306e948a8fc29f1d3ee87d3989f` | start of the ARM64 port |
+| 2026-11-07 | stable `v7.3.1` | `79a907609d53d5cd645b42c11550d295d43abf99` | merged into `upgrade/kernel-v7.3.1` as `2858ca64afa3` |
+
+The 2026-11-07 step moved the port from a 7.2-rc4 development snapshot to the
+7.3.1 stable release. It was a straight merge of the stable tag into the
+downstream branch. Upstream churn under `arch/um/` between the two points is
+small (10 files); the ARM64 port's own files under `arch/arm64/um/` and
+`arch/um/` merged without conflict. The single conflict was
+`arch/x86/um/asm/ptrace.h`: upstream `a661c34` (guard the ptrace-abi register
+macros with `__ASSEMBLER__` or `__FRAME_OFFSETS`, and define
+`__FRAME_OFFSETS` for 32-bit as well) turned the conditional define into an
+unconditional one, while this port additionally includes `<asm/ptrace-abi.h>`.
+Both were kept: upstream's unconditional define plus the port's include.
+
+Release baselines must be moved only after the build and the device gates pass;
+see `docs/RELEASE.md`.

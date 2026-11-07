@@ -87,6 +87,7 @@ USER_CFLAGS = $(patsubst $(KERNEL_DEFINES),,$(patsubst -I%,,$(KBUILD_CFLAGS))) \
 		-include $(srctree)/include/linux/compiler-version.h \
 		-include $(srctree)/include/linux/kconfig.h \
 		-include $(srctree)/include/linux/compiler_attributes.h \
+		-include $(srctree)/arch/um/scripts/glibc-compat.h \
 		-idirafter $(ARCH_DIR)/include/generated
 
 #This will adjust *FLAGS accordingly to the platform.

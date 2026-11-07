@@ -88,9 +88,11 @@ Both interception fallbacks can be forced anywhere with `nosysemu` and
 
 ## Base
 
-- Base: **Linux 7.2-rc4** (`origin/next`, the uml tree).
-- Branch: **`um-arm64`**, 38 commits on top. There is no other branch; the
-  history is linear and each commit is one change.
+- Base: **Linux 7.3.1** (stable `v7.3.1`, peeled `79a90760`). The port itself
+  was written against uml/next `1590cf032` (Linux 7.2-rc4) and moved to the
+  7.3.1 stable tag on 2026-11-07.
+- Branch: **`um-arm64`**, one commit per change; the v7.3.1 upgrade is prepared
+  on `upgrade/kernel-v7.3.1` and lands only after its gates pass.
 - Roughly a third of the series is not arm64-specific — x86 and generic `um/`
   fixes found on the way — and those stand on their own.
 

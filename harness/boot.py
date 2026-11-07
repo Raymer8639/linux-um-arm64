@@ -2,6 +2,7 @@
 """Run UML on an untraced host with a bounded lifetime and a strict gate."""
 import argparse
 import errno
+import fcntl
 import os
 import pty
 import re
@@ -9,6 +10,33 @@ import select
 import signal
 import sys
 import time
+
+def image_is_held(path: str) -> bool:
+    """True when another process holds UML's exclusive lock on this image.
+
+    UML takes an F_SETLK (write lock) on the backing image, so the lock itself is the
+    condition a second boot runs into: if this process cannot take it, somebody else
+    has it. The check has to happen BEFORE the boot, because a second guest on a held
+    image does not fail loudly -- it boots with no disk (the console says NO_DISK) and
+    silently discards every write, which is a data-loss bug that looks like a working
+    guest.
+    """
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError:
+        return False
+    try:
+        fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return True
+    finally:
+        try:
+            fcntl.lockf(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(fd)
+    return False
+
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("kernel")
@@ -29,6 +57,12 @@ for path in (kernel, stub):
         parser.error("not an executable file: " + path)
 if not (os.path.isdir(root) if args.hostfs else os.path.isfile(root)):
     parser.error("invalid rootfs: " + root)
+if not args.hostfs and image_is_held(root):
+    parser.error(
+        "another guest already holds " + root + ": UML takes an exclusive lock on the "
+        "backing image, and a second boot would run diskless and lose every write. "
+        "Copy the image, or stop the other guest first."
+    )
 cmd = [kernel, "mem=512M", "rw", "init=/um-init", "con=null",
        "con0=fd:0,fd:1", "stub_exe=" + stub, "panic=1"]
 cmd += (["rootfstype=hostfs", "rootflags=" + root] if args.hostfs else

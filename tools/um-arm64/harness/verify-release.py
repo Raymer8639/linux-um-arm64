@@ -63,7 +63,12 @@ ASSETS = {
     "linux-bionic": {
         "required": True,
         "kind": "elf-exec",
-        "description": "UML kernel, static bionic, aarch64",
+        "description": "UML kernel, static bionic, aarch64 (UP/fast profile)",
+    },
+    "linux-bionic-smp": {
+        "required": False,
+        "kind": "elf-exec",
+        "description": "UML kernel, SMP + Docker config, static bionic, aarch64",
     },
     "stub_exe": {
         "required": True,
@@ -428,7 +433,7 @@ def verify_assets(directory, release, assets, require_all):
 
 
 def name_is_linux(name):
-    return name == "linux-bionic"
+    return name in ("linux-bionic", "linux-bionic-smp")
 
 
 def cmd_make(args):

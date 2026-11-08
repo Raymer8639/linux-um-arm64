@@ -31,6 +31,13 @@ Working, and tested rather than asserted:
 | Containers | `dockerd` with overlay2 on cgroup v2; `docker run hello-world` pulls and runs |
 | Host libc | glibc and bionic (Android NDK) |
 
+The 7.3.1 baseline was gated on a Termux host before it was released: boot
+into an Arch aarch64 userspace (`GATE_OK`, `uname -m` = `aarch64`), 10/10
+network checks (DHCP, address, route, ICMP, DNS, TCP, concurrency, clean
+teardown), 15/15 with IPv6 egress (AAAA lookup and an IPv6 HTTP fetch from the
+guest), ext4 read/write with persistence across a reboot and a read-only mount
+refusing writes, and 8/8 clean boots in a short soak.
+
 Not working, or not finished:
 
 - **No 32-bit compat.** `CONFIG_COMPAT` is off; the guest runs aarch64 userspace only.
@@ -86,13 +93,44 @@ Tested on:
 Both interception fallbacks can be forced anywhere with `nosysemu` and
 `nocancel`, so they are testable without owning a 4.19 phone.
 
+## Releases
+
+Tarballs are not the deliverable. A release here is a small set of
+Android-runnable binaries built together, from one commit, with one NDK,
+against one Android API level:
+
+| release | base | notes |
+|---|---|---|
+| [`um-arm64-v0.4.0`](https://github.com/Raymer8639/linux-um-arm64/releases/tag/um-arm64-v0.4.0) | Linux 7.3.1 | current; UP kernel, 6 assets |
+| [`um-arm64-v0.3.0`](https://github.com/Raymer8639/linux-um-arm64/releases/tag/um-arm64-v0.3.0) | Linux 7.2-rc4 | adds the SMP + Docker kernel profile |
+
+`um-arm64-v0.4.0` ships `linux-bionic`, `stub_exe`, `umnet`,
+`passt-bionic`, `MANIFEST` and `SHA256SUMS`. Every asset is aarch64 and
+**static**: Android has no `/lib/ld-linux-aarch64.so.1`, so a dynamic UML dies
+before `main` with no output at all, and an app may only exec from its own
+native library directory anyway. `linux-bionic-smp` (SMP + Docker) is an
+optional extra asset — see [RELEASE.md](docs/RELEASE.md).
+
+The manifest pins the kernel version and the upstream baseline, and the checker
+reads the version back out of the binary rather than trusting the tag:
+
+```sh
+tools/um-arm64/harness/verify-release.py check --tag um-arm64-v0.4.0
+```
+
 ## Base
 
-- Base: **Linux 7.3.1** (stable `v7.3.1`, peeled `79a90760`). The port itself
-  was written against uml/next `1590cf032` (Linux 7.2-rc4) and moved to the
-  7.3.1 stable tag on 2026-11-07.
-- Branch: **`um-arm64`**, one commit per change; the v7.3.1 upgrade is prepared
-  on `upgrade/kernel-v7.3.1` and lands only after its gates pass.
+- Base: **Linux 7.3.1** (stable `v7.3.1`, peeled `79a90760`), merged into
+  `um-arm64` on 2026-11-07 (merge `2858ca64afa3`, first-parent `a541b5561e98`).
+  The port itself was written against uml/next `1590cf032` (Linux 7.2-rc4).
+- Branch: **`um-arm64`**, one commit per change. Upstream is *merged*, never
+  rebased onto, so a downstream commit keeps its hash across a baseline move.
+- The 7.3.1 step was a straight merge of the stable tag: upstream touched ten
+  files under `arch/um/`, and the only conflict was
+  `arch/x86/um/asm/ptrace.h`, where upstream `a661c34` made
+  `__FRAME_OFFSETS` unconditional so 32-bit builds keep their register
+  offsets, while this port additionally includes the uapi
+  `<asm/ptrace-abi.h>`. Both were kept.
 - Roughly a third of the series is not arm64-specific — x86 and generic `um/`
   fixes found on the way — and those stand on their own.
 
@@ -109,7 +147,8 @@ make ARCH=um SUBARCH=arm64 LLVM=1 defconfig
 make ARCH=um SUBARCH=arm64 LLVM=1 -j$(nproc)
 ```
 
-or `harness/build.sh`, which adds ccache and publishes the binary the gates run.
+or `tools/um-arm64/harness/build.sh`, which adds ccache and publishes the
+binary the gates run.
 
 **bionic** (Android NDK, what an app can exec):
 
@@ -125,7 +164,7 @@ execute from its own native library directory.
 Extra config fragments:
 
 ```sh
-EXTRA_CONFIG="config/usb-wifi.config config/docker.config" harness/build-bionic.sh
+EXTRA_CONFIG="config/usb-wifi.config config/docker.config" tools/um-arm64/harness/build-bionic.sh
 ```
 
 ## Run
@@ -162,9 +201,17 @@ A gate is a boot that must print a marker string. **The verdict is the marker,
 never the exit status** — `adb shell` returns 0 whatever the remote command did,
 and a truncated log is indistinguishable from a kernel that stopped.
 
+Starting a second guest on a backing image that another UML already holds is
+refused up front (`harness/boot.py`). UML takes an exclusive `F_SETLK` on the
+image, so the second guest comes up **diskless**: the console says `NO_DISK`,
+the boot marker still appears, and every write is silently discarded. A gate
+that only reads the marker passes while the data goes nowhere, so the harness
+probes the lock before it boots and tells you to copy the image or stop the
+other guest.
+
 ```sh
 GATE=g3 MARKER=UMARM_BOOT_OK INIT=/gate3-init \
-  UBD0=$PWD/rootfs/alpine.ext4 EXTRA_ARGS="rw seccomp=on" harness/boot.sh
+  UBD0=$PWD/rootfs/alpine.ext4 EXTRA_ARGS="rw seccomp=on" tools/um-arm64/harness/boot.sh
 ```
 
 It prints `verdict=PASS|FAIL|SIGNAL`, the artifact directory, and
@@ -175,30 +222,31 @@ rss-counter BUG rode along inside a green gate.
 The gate matrix, including the expensive ones sampled every N iterations:
 
 ```sh
-N=20 harness/loop.sh            # g2mini g2alpine g3 g5 g3noaslr g4 fp fpnoaslr
+N=20 tools/um-arm64/harness/loop.sh            # g2mini g2alpine g3 g5 g3noaslr g4 fp fpnoaslr
 ```
 
 On a phone over adb, same interface:
 
 ```sh
 PUSH=1 BIN=$PWD/artifacts/linux-bionic GATE=g3 INIT=/gate3-init \
-  UBD0=alpine.ext4 EXTRA_ARGS="seccomp=on" harness/android.sh
+  UBD0=alpine.ext4 EXTRA_ARGS="seccomp=on" tools/um-arm64/harness/android.sh
 ```
 
 Output is captured **on the device** and pulled afterwards, never streamed:
 streaming loses the tail, and every gate that "failed" on that phone before this
 change was actually passing.
 
-Related probes worth knowing about: `harness/probe/vethprobe.c` creates a veth
-pair over rtnetlink, because busybox's `ip` does not know the veth link type and
-fails identically whether or not `CONFIG_VETH` is set — useless as a test.
+Related probes worth knowing about: `tools/um-arm64/harness/probe/vethprobe.c`
+creates a veth pair over rtnetlink, because busybox's `ip` does not know the
+veth link type and fails identically whether or not `CONFIG_VETH` is set —
+useless as a test.
 
 ### Fault injection and soak
 
-A passing gate proves the happy path. `harness/inject-faults.sh` destroys the
-link, the guest kernel or the UML process **while the guest is using it**, and
-states required criteria before running them, so "it ran" cannot pass for "it
-passed":
+A passing gate proves the happy path.
+`tools/um-arm64/harness/inject-faults.sh` destroys the link, the guest kernel or
+the UML process **while the guest is using it**, and states required criteria
+before running them, so "it ran" cannot pass for "it passed":
 
 | scenario | destroyed mid-run | required criteria |
 |---|---|---|
@@ -213,12 +261,12 @@ pid to `--passt-pid-file`; and UML needs a controlling terminal even when a
 script starts it — `con0=fd:0,fd:1` on a pipe dies before userspace with no
 output, which reads exactly like a kernel fault.
 
-`harness/soak-umnet.sh` is the repetition counterpart: per-round verdicts,
-leaked processes and memory drift. `--minutes` bounds it by wall clock in
-addition to `--rounds`, so
-`soak-umnet.sh --minutes 180 --rounds 5000` is an hour-scale run; records land
-in `docs/evidence/soak/`. Run one device tool at a time — the leak criteria
-count by process name and start time.
+`tools/um-arm64/harness/soak-umnet.sh` is the repetition counterpart: per-round
+verdicts, leaked processes and memory drift. `--minutes` bounds it by wall clock
+in addition to `--rounds`, so
+`tools/um-arm64/harness/soak-umnet.sh --minutes 180 --rounds 5000` is an
+hour-scale run; records land in `docs/evidence/soak/`. Run one device tool at a
+time — the leak criteria count by process name and start time.
 
 ## Benchmarks
 
@@ -243,7 +291,7 @@ the native figure is per 4K page and the guest's is per 16K page — four times
 the memory for one number. Per byte the guest is **1.77×** the host on fresh
 anonymous memory, not the ~7× the column implies. The per-page reading of this
 row was believed here for a long time and sent a good deal of work chasing an
-overhead that was mostly a unit error; `harness/faultbench.c` reports per
+overhead that was mostly a unit error; `tools/um-arm64/harness/probe/faultbench.c` reports per
 megabyte as well as per page so that it cannot happen again.
 
 The two guest columns are the same binary under two command lines, differing
@@ -303,7 +351,7 @@ took `fault` from 18.897 to 11.076, both inside their own run.
 Reproduce:
 
 ```sh
-KERNELS="base=... waiter=... fault=..." ROUNDS=7 harness/verifybench.sh
+KERNELS="base=... waiter=... fault=..." ROUNDS=7 tools/um-arm64/harness/verifybench.sh
 ```
 
 It writes `manifest.txt` (git HEAD, md5 and `file(1)` of every binary, device

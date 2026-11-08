@@ -1,3 +1,5 @@
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 # Linux/UML on arm64
 
 `ARCH=um SUBARCH=arm64` — a Linux kernel running as an ordinary aarch64 userspace

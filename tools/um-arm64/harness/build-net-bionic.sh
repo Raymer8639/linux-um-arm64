@@ -18,7 +18,7 @@
 # the NDK compiler directly. What it has to work around instead is passt's
 # source: it was written for glibc and musl, and bionic differs from both in
 # several headers. Those differences are kept as passt-bionic.patch beside
-# this script (generated against upstream df90211), and this script applies it
+# this script (generated against upstream 7380393), and this script applies it
 # to whatever tree it builds; each hunk says why it is there.
 #
 # The result is two static binaries. Static because Android has no dynamic
@@ -102,7 +102,7 @@ CC="$TOOL/clang --target=aarch64-linux-android$API"
 
 # umnet is this repository's own source, so it always builds.  passt is a
 # separate project that needs the bionic patch; the patch ships beside this
-# script (against upstream df90211), so a checkout plus the patch reproduces
+# script (against upstream 7380393), so a checkout plus the patch reproduces
 # the release passt-bionic.  A missing checkout or patch is reported as
 # "passt was skipped" rather than taken as a broken tree, because umnet alone
 # is still useful.

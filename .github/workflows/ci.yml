@@ -82,8 +82,8 @@ jobs:
           PATCH=tools/um-arm64/harness/passt-bionic.patch
           test -f "$PATCH"
           # Bump this revision together with the patch when rebasing it.
-          git clone -q --filter=blob:none https://github.com/qemus/passt.git "$RUNNER_TEMP/passt"
-          git -C "$RUNNER_TEMP/passt" checkout -q df90211db4b08a06ed4e499ffa40bf8811100a2f
+          git clone -q --filter=blob:none https://passt.top/passt "$RUNNER_TEMP/passt"
+          git -C "$RUNNER_TEMP/passt" checkout -q 7380393df27ec3ae4aacb40b6f9f25f75a11acf5
           git -C "$RUNNER_TEMP/passt" apply --check "$GITHUB_WORKSPACE/$PATCH"
           git -C "$RUNNER_TEMP/passt" apply "$GITHUB_WORKSPACE/$PATCH"
           git -C "$RUNNER_TEMP/passt" apply --reverse --check "$GITHUB_WORKSPACE/$PATCH"
@@ -133,6 +133,9 @@ jobs:
           sh -n harness/um-init harness/test-um-init.sh harness/test-um-init-cmdline.sh
           harness/test-um-init.sh
           harness/test-um-init-cmdline.sh
+          python3 tools/um-arm64/harness/test-runtime-um-init.py
+          python3 tools/um-arm64/harness/test-marker-panic-root.py
+          python3 tools/um-arm64/harness/inject-faults.py --self-test
           sh tools/um-arm64/harness/test-umnet.sh
           python3 -m py_compile harness/*.py tools/um-arm64/harness/test-umnet-network.sh tools/um-arm64/harness/verify-release.py
           # Prove the release checker rejects broken releases.  A checker that

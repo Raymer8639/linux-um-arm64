@@ -1,5 +1,21 @@
 # Release Policy
 
+## um-arm64-v0.4.1 (2026-11-14)
+
+This runtime update keeps Linux 7.3.1 and the kernel/stub pair published in
+`um-arm64-v0.4.0` unchanged, and carries passt-android `v0.4.0` as the new
+`passt-bionic` companion. The `umnet` binary is unchanged. Asset hashes and the
+source release for reused components are recorded in the release notes; this
+is not a new kernel baseline or a claim that those assets were rebuilt.
+
+The source release also includes the rebased passt Android patch and pinned
+CI baseline, runtime/status and panic-root ownership regressions, atomic
+replacement of copied leaf symlinks, and the corrected offline gate fixture.
+The existing kernel/ext4 evidence remains tied to the reused kernel bytes.
+The final kernel/stub/umnet/passt combination is checked on the untraced
+Termux host before publication. No additional long soak or real fault
+injection is claimed.
+
 Downstream release tags must not reuse Linux kernel version tags. Use a name
 that identifies this project and the downstream line, for example:
 
@@ -32,7 +48,7 @@ one commit, with one NDK, against one Android API level:
 | `linux-bionic-smp` | no | SMP + Docker kernel profile; same source, different config |
 | `stub_exe` | yes | the userspace stub the kernel execs for every guest |
 | `umnet` | yes | the vector-fd bridge between UML and passt |
-| `passt-bionic` | no | a companion passt, built from upstream `df90211` with `harness/passt-bionic.patch` |
+| `passt-bionic` | no | a companion passt, built from upstream `7380393df27ec3ae4aacb40b6f9f25f75a11acf5` with `harness/passt-bionic.patch` |
 
 Every asset is checked for the two properties that actually matter on Android:
 **aarch64** (an x86_64 binary under an arm64 tag is useless) and **static**

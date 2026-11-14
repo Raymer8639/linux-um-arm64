@@ -579,13 +579,23 @@ def prepare_panic_root(args):
                                % (target, PANIC_ROOT_MARKER))
         shutil.rmtree(target)
     shutil.copytree(source, target, symlinks=True)
-    with open(os.path.join(target, PANIC_ROOT_MARKER), "w",
-              encoding="utf-8") as handle:
-        handle.write("created by inject-faults.sh; safe to delete\n")
-    script = os.path.join(target, "net-command.sh")
-    with open(script, "w", encoding="utf-8") as handle:
-        handle.write(PANIC_SCRIPT)
-    os.chmod(script, 0o755)
+    def write_copy_file(name, content, mode):
+        # copytree preserves leaf symlinks: opening either file directly could
+        # overwrite a file outside this disposable copy. Publish a new regular
+        # file instead, replacing the copied directory entry without following it.
+        fd, temporary = tempfile.mkstemp(prefix=".inject-faults-", dir=target)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(content)
+                os.fchmod(handle.fileno(), mode)
+            os.replace(temporary, os.path.join(target, name))
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+    write_copy_file(PANIC_ROOT_MARKER,
+                    "created by inject-faults.sh; safe to delete\n", 0o600)
+    write_copy_file("net-command.sh", PANIC_SCRIPT, 0o755)
     return target
 
 

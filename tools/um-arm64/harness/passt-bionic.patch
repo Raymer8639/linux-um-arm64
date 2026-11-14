@@ -44,26 +44,40 @@ index 16b9dc8..afef78e 100644
  #define VERSION_BLOB							       \
  	VERSION "\n"							       \
 diff --git a/conf.c b/conf.c
-index 149a4c7..107c463 100644
+index 7be0c79..835b7b6 100644
 --- a/conf.c
 +++ b/conf.c
-@@ -1329,6 +1329,7 @@ void conf(struct ctx *c, int argc, char **argv)
+@@ -529,6 +529,13 @@ static unsigned int conf_ip6(struct ctx *c, unsigned int ifi)
+ static void conf_ip6_local(struct ctx *c)
+ {
+ 	struct ip6_ctx *ip6 = &c->ip6;
++	const struct guest_addr *a;
++
++	/* Explicit local addresses must initialise inbound/NAT state as well as
++	 * DHCPv6/NDP: addr_fixed disables learning this value from tap traffic. */
++	a = fwd_get_addr(c, AF_INET6, true, CONF_ADDR_ANY);
++	if (a)
++		ip6->addr_seen = a->addr.a6;
+ 
+ 	if (IN6_IS_ADDR_UNSPECIFIED(&ip6->guest_gw))
+ 		ip6->guest_gw = IP6_LL_GUEST_GW;
+@@ -1371,6 +1378,7 @@ void conf(struct ctx *c, int argc, char **argv)
  	unsigned long max_mtu = IP_MAX_MTU;
  	struct fqdn *dnss = c->dns_search;
  	unsigned int ifi4 = 0, ifi6 = 0;
 +	bool fd_local_mode;
  	bool opt_a_is_prefix = false;
  	const char *logfile = NULL;
- 	char *runas = NULL;
-@@ -1851,11 +1852,50 @@ void conf(struct ctx *c, int argc, char **argv)
+ 	unsigned long optcode;
+@@ -1922,11 +1930,51 @@ void conf(struct ctx *c, int argc, char **argv)
  
  	log_conf_parsed = true;		/* Stop printing everything */
  
 -	nl_sock_init(c, false);
 -	if (!v6_only && !c->splice_only)
--		c->ifi4 = conf_ip4(ifi4, &c->ip4);
+-		c->ifi4 = conf_ip4(c, ifi4);
 -	if (!v4_only && !c->splice_only)
--		c->ifi6 = conf_ip6(ifi6, &c->ip6);
+-		c->ifi6 = conf_ip6(c, ifi6);
 +	/* Android may deny route netlink to an unprivileged app. A prepatched
 +	 * --fd endpoint does not need host interface discovery: all guest-side
 +	 * values are supplied explicitly by the caller, for IPv4 and IPv6
@@ -83,7 +97,7 @@ index 149a4c7..107c463 100644
 +		nl_sock_init(c, false);
 +	if (fd_local_mode) {
 +		if (!v6_only) {
-+			conf_ip4_local(&c->ip4);
++			conf_ip4_local(c);
 +			c->ifi4 = -1;
 +		} else {
 +			c->ifi4 = 0;
@@ -95,23 +109,24 @@ index 149a4c7..107c463 100644
 +			 * a link-local value, which is not what a caller
 +			 * asking for IPv6 wants: refuse instead of silently
 +			 * handing the guest an address it never asked for. */
-+			if (v6_only && IN6_IS_ADDR_UNSPECIFIED(&c->ip6.addr))
++			if (v6_only && !fwd_get_addr(c, AF_INET6, true,
++						     CONF_ADDR_USER))
 +				die("--fd with IPv6 needs an explicit -a address");
-+			conf_ip6_local(&c->ip6);
++			conf_ip6_local(c);
 +			c->ifi6 = -1;
 +		} else {
 +			c->ifi6 = 0;
 +		}
 +	} else {
 +		if (!v6_only && !c->splice_only)
-+			c->ifi4 = conf_ip4(ifi4, &c->ip4);
++			c->ifi4 = conf_ip4(c, ifi4);
 +		if (!v4_only && !c->splice_only)
-+			c->ifi6 = conf_ip6(ifi6, &c->ip6);
++			c->ifi6 = conf_ip6(c, ifi6);
 +	}
  
  	if (c->ifi4 && c->mtu < IPV4_MIN_MTU) {
  		warn("MTU %"PRIu16" is too small for IPv4 (minimum %u)",
-@@ -1884,6 +1924,9 @@ void conf(struct ctx *c, int argc, char **argv)
+@@ -1955,6 +2003,9 @@ void conf(struct ctx *c, int argc, char **argv)
  	}
  
  	if (!c->ifi6 && !v4_only) {
@@ -120,8 +135,8 @@ index 149a4c7..107c463 100644
 +		 * context -- so this block cannot execute in that case. */
  		if (!c->splice_only) {
  			info("IPv6: no external interface as template, use local mode");
- 			conf_ip6_local(&c->ip6);
-@@ -1934,7 +1977,8 @@ void conf(struct ctx *c, int argc, char **argv)
+ 			conf_ip6_local(c);
+@@ -2008,7 +2059,8 @@ void conf(struct ctx *c, int argc, char **argv)
  
  	conf_open_files(c);	/* Before any possible setuid() / setgid() */
  
@@ -132,10 +147,10 @@ index 149a4c7..107c463 100644
  	if (c->no_icmp)
  		c->no_ndp = 1;
 diff --git a/ip.h b/ip.h
-index aab9b86..55faa47 100644
+index ac93c54..e392b71 100644
 --- a/ip.h
 +++ b/ip.h
-@@ -64,6 +64,7 @@
+@@ -66,6 +66,7 @@
  		.daddr		= IN6ADDR_ANY_INIT,			\
  	}
  
@@ -143,7 +158,7 @@ index aab9b86..55faa47 100644
  struct ipv6hdr {
  #pragma GCC diagnostic push
  #pragma GCC diagnostic ignored "-Wpedantic"
-@@ -92,6 +93,7 @@ struct ipv6_opt_hdr {
+@@ -94,6 +95,7 @@ struct ipv6_opt_hdr {
  	 * TLV encoded option data follows.
  	 */
  } __attribute__((packed));	/* required for some archs */
@@ -152,7 +167,7 @@ index aab9b86..55faa47 100644
  /**
   * ip6_set_flow_lbl() - Set flow label in an IPv6 header
 diff --git a/isolation.c b/isolation.c
-index a00475f..85d80c5 100644
+index 0cb6adb..2e4f464 100644
 --- a/isolation.c
 +++ b/isolation.c
 @@ -78,6 +78,7 @@
@@ -163,7 +178,7 @@ index a00475f..85d80c5 100644
  #include <sys/syscall.h>
  #include <sys/types.h>
  #include <netinet/in.h>
-@@ -384,6 +385,18 @@ void isolate_user(const struct ctx *c, uid_t uid, gid_t gid, bool use_userns,
+@@ -396,6 +397,18 @@ void isolate_user(const struct ctx *c, uid_t uid, gid_t gid, bool use_userns,
  {
  	uint64_t ns_caps = 0;
  
@@ -182,7 +197,7 @@ index a00475f..85d80c5 100644
  	/* First set our UID & GID in the original namespace */
  	if (setgroups(0, NULL)) {
  		/* If we don't have CAP_SETGID, this will EPERM */
-@@ -479,6 +492,17 @@ int isolate_prefork(const struct ctx *c)
+@@ -491,6 +504,17 @@ int isolate_prefork(const struct ctx *c)
  	int flags = CLONE_NEWIPC | CLONE_NEWNS | CLONE_NEWUTS;
  	uint64_t ns_caps = 0;
  
@@ -200,7 +215,7 @@ index a00475f..85d80c5 100644
  	/* If we run in foreground, we have no chance to actually move to a new
  	 * PID namespace. For passt, use CLONE_NEWPID anyway, in case somebody
  	 * ever gets around seccomp profiles -- there's no harm in passing it.
-@@ -528,6 +552,7 @@ int isolate_prefork(const struct ctx *c)
+@@ -540,6 +564,7 @@ int isolate_prefork(const struct ctx *c)
  	/* Now that initialization is more-or-less complete, we can
  	 * drop further capabilities
  	 */
@@ -209,7 +224,7 @@ index a00475f..85d80c5 100644
  		/* Keep CAP_SYS_ADMIN, so we can enter the netns */
  		ns_caps |= BIT(CAP_SYS_ADMIN);
 diff --git a/passt.c b/passt.c
-index 5054551..cbe3633 100644
+index fa7afc5..63bf71b 100644
 --- a/passt.c
 +++ b/passt.c
 @@ -421,7 +421,13 @@ int main(int argc, char **argv)
@@ -228,7 +243,7 @@ index 5054551..cbe3633 100644
  	if (isolate_prefork(c))
  		die("Failed to sandbox process, exiting");
 diff --git a/tcp.c b/tcp.c
-index 3b78d2e..3652e7a 100644
+index 95f4f3e..35a5337 100644
 --- a/tcp.c
 +++ b/tcp.c
 @@ -327,7 +327,7 @@
@@ -241,7 +256,7 @@ index 3b78d2e..3652e7a 100644
  struct tcp_repair_opt {
  	__u32	opt_code;
 diff --git a/util.c b/util.c
-index c02aea9..31199af 100644
+index ff1f19f..7a84f50 100644
 --- a/util.c
 +++ b/util.c
 @@ -18,6 +18,7 @@
@@ -339,33 +354,23 @@ index c02aea9..31199af 100644
  /**
   * make_ugid_map() - Create userns UID & GID mappings
   * @pid:	PID of process owning the userns, or 0 for self
-@@ -1144,8 +1215,24 @@ void make_ugid_map(pid_t pid, uid_t uid, gid_t gid)
+@@ -1144,8 +1215,13 @@ void make_ugid_map(pid_t pid, uid_t uid, gid_t gid)
  	if (snprintf_check(gidmap, BUFSIZ, "0 %u 1", gid))
  		die_perror("Can't build gidmap");
  
 -	if (write_file(uidmap_path, uidmap) ||
 -	    write_file(setgroups_path, "deny") ||
 -	    write_file(gidmap_path, gidmap))
+-		warn("Couldn't configure user mappings");
++	/* Keep the required uid_map -> setgroups -> gid_map order.  Attempt all
++	 * writes, even if procfs belongs to a stale/detached PID namespace.  As
++	 * upstream does, warn instead of aborting when mapping files are absent
++	 * or unwritable.  Android prepatched mode never enters this path. */
 +	if (write_file(uidmap_path, uidmap))
-+		die("Couldn't configure user mappings");
-+
-+	/* The order matters and is not optional: for an unprivileged caller the
-+	 * gid map is only writable after "deny" has been written to setgroups.
-+	 * Writing it afterwards made pasta fail with "Couldn't configure user
-+	 * mappings" instead of starting, which is the opposite of the intended
-+	 * Android tolerance.
-+	 *
-+	 * That tolerance still applies where the file is absent or refused: Linux
-+	 * before 3.19 has no setgroups, and some sandboxes (Android included) deny
-+	 * it.  Failure is only acceptable when writing it was not what made the
-+	 * gid map writable, so it is attempted first and its error is kept, not
-+	 * fatal -- but a gid_map failure after a *successful* setgroups write is
-+	 * reported as the mapping error it is.
-+	 */
++		warn("Couldn't configure user mappings (uid_map)");
 +	(void)write_file(setgroups_path, "deny");
-+
 +	if (write_file(gidmap_path, gidmap))
- 		die("Couldn't configure user mappings");
++		warn("Couldn't configure user mappings (gid_map)");
  }
 diff --git a/util.h b/util.h
 index ec2d9ac..dfde65a 100644
@@ -379,7 +384,7 @@ index ec2d9ac..dfde65a 100644
  
  #endif /* UTIL_H */
 diff --git a/virtio.c b/virtio.c
-index d7016cc..85dc9ed 100644
+index 689da66..1b00074 100644
 --- a/virtio.c
 +++ b/virtio.c
 @@ -306,6 +306,12 @@ static bool vu_queue_empty(struct vu_virtq *vq)

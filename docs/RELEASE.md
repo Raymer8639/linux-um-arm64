@@ -1,5 +1,21 @@
 # Release Policy
 
+## um-arm64-v0.4.1 (2026-11-14)
+
+This runtime update keeps Linux 7.3.1 and the kernel/stub pair published in
+`um-arm64-v0.4.0` unchanged, and carries passt-android `v0.4.0` as the new
+`passt-bionic` companion. The `umnet` binary is unchanged. Asset hashes and the
+source release for reused components are recorded in the release notes; this
+is not a new kernel baseline or a claim that those assets were rebuilt.
+
+The source release also includes the rebased passt Android patch and pinned
+CI baseline, runtime/status and panic-root ownership regressions, atomic
+replacement of copied leaf symlinks, and the corrected offline gate fixture.
+The existing kernel/ext4 evidence remains tied to the reused kernel bytes.
+The final kernel/stub/umnet/passt combination is checked on the untraced
+Termux host before publication. No additional long soak or real fault
+injection is claimed.
+
 Downstream release tags must not reuse Linux kernel version tags. Use a name
 that identifies this project and the downstream line, for example:
 

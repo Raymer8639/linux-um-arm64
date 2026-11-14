@@ -835,17 +835,19 @@ def main():
     parser.add_argument("--mode", default="pass")
     parser.add_argument("--marker", default="sample-gate-child")
     parser.add_argument("--counter", default="")
+    parser.add_argument("--passt-pid-file", default="")
     args = parser.parse_args()
 
-    def fake(token):
-        """A stand-in process that keeps `token` in its command line.
+    def fake(token, name=None):
+        """Keep the unique watch token and an optional exact executable name.
 
-        `sh -c 'sleep 300' token` does not work here: dash execs the single
-        command, so the process becomes a bare `sleep 300` and the token --
-        which is the whole point of the fixture -- disappears.
+        An explicit argv[0] lets Attack.find match linux-bionic by basename;
+        the token remains a separate argument so leak checks stay isolated.
+        `sh -c 'sleep 300' token` loses the token when dash execs sleep.
         """
         return subprocess.Popen(
-            [sys.executable, "-c", "import time; time.sleep(300)", token],
+            [name or sys.executable, "-c", "import time; time.sleep(300)", token],
+            executable=sys.executable,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     log_path = os.path.join(args.workdir, args.log)
@@ -869,10 +871,14 @@ def main():
         # The `-leak` variants keep the tree alive after the fault, which is
         # how the injector's "nothing survived" criterion gets a failing case
         # to prove it can fail.
-        stray.append(fake(args.marker + "-umnet"))
+        stray.append(fake(args.marker + "-umnet", "umnet"))
         if mode.startswith("children"):
-            stray.append(fake(args.marker + "-passt-bionic"))
-        stray.append(fake(args.marker + "-linux-bionic"))
+            helper = fake(args.marker + "-passt-bionic", "passt-bionic")
+            stray.append(helper)
+            if args.passt_pid_file:
+                with open(args.passt_pid_file, "w", encoding="ascii") as handle:
+                    handle.write("%d\n" % helper.pid)
+        stray.append(fake(args.marker + "-linux-bionic", "linux-bionic"))
     if mode == "hang":
         stray.append(fake(args.marker + "-hang"))
 
@@ -910,6 +916,8 @@ def main():
             for proc in stray:
                 if proc.poll() is None:
                     proc.kill()
+            for proc in stray:
+                proc.wait()
         with open(log_path, "w") as handle:
             handle.write(text)
         for name in CHECKS:

@@ -133,6 +133,9 @@ jobs:
           sh -n harness/um-init harness/test-um-init.sh harness/test-um-init-cmdline.sh
           harness/test-um-init.sh
           harness/test-um-init-cmdline.sh
+          python3 tools/um-arm64/harness/test-runtime-um-init.py
+          python3 tools/um-arm64/harness/test-marker-panic-root.py
+          python3 tools/um-arm64/harness/inject-faults.py --self-test
           sh tools/um-arm64/harness/test-umnet.sh
           python3 -m py_compile harness/*.py tools/um-arm64/harness/test-umnet-network.sh tools/um-arm64/harness/verify-release.py
           # Prove the release checker rejects broken releases.  A checker that

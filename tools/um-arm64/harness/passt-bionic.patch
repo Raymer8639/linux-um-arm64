@@ -228,7 +228,7 @@ index 5054551..cbe3633 100644
  	if (isolate_prefork(c))
  		die("Failed to sandbox process, exiting");
 diff --git a/tcp.c b/tcp.c
-index 3b78d2e..3652e7a 100644
+index 3b78d2e..6b66a80 100644
 --- a/tcp.c
 +++ b/tcp.c
 @@ -327,7 +327,7 @@
@@ -240,6 +240,66 @@ index 3b78d2e..3652e7a 100644
  /* From Linux UAPI, missing in netinet/tcp.h provided by musl */
  struct tcp_repair_opt {
  	__u32	opt_code;
+@@ -2417,15 +2417,22 @@ int tcp_tap_handler(const struct ctx *c, uint8_t pif, sa_family_t af,
+ 
+ 	/* Established connections not accepting data from tap */
+ 	if (conn->events & TAP_FIN_RCVD) {
++		bool fin_only, retr;
+ 		size_t dlen;
+-		bool retr;
+ 
+ 		if ((dlen = tcp_packet_data_len(th, l4len))) {
+ 			flow_dbg(conn, "data segment in CLOSE-WAIT (%zu B)",
+ 				 dlen);
+ 		}
+ 
+-		retr = th->ack && !th->fin &&
++		/* If only our FIN is outstanding, rewinding on a duplicate ACK
++		 * would re-send it on every ACK, bypassing the backoff and
++		 * retry limit of tcp_timer_handler(): let the timer do it.
++		 */
++		fin_only = (conn->events & TAP_FIN_SENT) &&
++			   conn->seq_to_tap == conn->seq_ack_from_tap + 1;
++
++		retr = th->ack && !th->fin && !fin_only &&
+ 		       ntohl(th->ack_seq) == conn->seq_ack_from_tap &&
+ 		       ntohs(th->window) == conn->wnd_from_tap;
+ 
+diff --git a/tcp_buf.c b/tcp_buf.c
+index 72c4541..ee8c7ce 100644
+--- a/tcp_buf.c
++++ b/tcp_buf.c
+@@ -335,6 +335,9 @@ int tcp_buf_data_from_sock(const struct ctx *c, struct tcp_tap_conn *conn,
+ 	struct iovec *iov;
+ 	uint32_t seq;
+ 
++	if (!mss)
++		return 0;
++
+ 	/* Set up buffer descriptors we'll fill completely and partially. */
+ 	fill_bufs = DIV_ROUND_UP(wnd_scaled - already_sent, mss);
+ 	if (fill_bufs > TCP_FRAMES) {
+diff --git a/tcp_conn.h b/tcp_conn.h
+index e3c5534..3173ddb 100644
+--- a/tcp_conn.h
++++ b/tcp_conn.h
+@@ -51,8 +51,14 @@ struct tcp_tap_conn {
+ 
+ #define TCP_MSS_BITS			14
+ 	unsigned int	tap_mss		:TCP_MSS_BITS;
+-#define MSS_SET(conn, mss)	(conn->tap_mss = (mss >> (16 - TCP_MSS_BITS)))
+-#define MSS_GET(conn)		(conn->tap_mss << (16 - TCP_MSS_BITS))
++
++	/* Clamp non-zero MSS < 4 to 1 to avoid rounding to zero */
++#define MSS_SET(conn, mss)						\
++	(conn->tap_mss = (mss) ? MAX(1, (mss) >> (16 - TCP_MSS_BITS)) : 0)
++
++	/* tap_mss is stored as 1 for any non-zero MSS value <= 4 */
++#define MSS_GET(conn)							\
++	((conn->tap_mss == 1) ? 1 : (conn->tap_mss << (16 - TCP_MSS_BITS)))
+ 
+ #define RTT_EXP_BITS			4
+ 	unsigned int	rtt_exp		:RTT_EXP_BITS;
 diff --git a/util.c b/util.c
 index c02aea9..31199af 100644
 --- a/util.c

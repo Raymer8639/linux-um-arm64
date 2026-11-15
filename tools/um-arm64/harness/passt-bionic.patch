@@ -235,6 +235,26 @@ index fa7afc5..63bf71b 100644
  
  	if (isolate_prefork(c))
  		die("Failed to sandbox process, exiting");
+diff --git a/passt.h b/passt.h
+index d4661d8..3dc68ed 100644
+--- a/passt.h
++++ b/passt.h
+@@ -192,6 +192,7 @@ struct ip6_ctx {
+  * @netns_dir:		Directory of fs-bound namespace, if any, in pasta mode
+  * @epollfd:		File descriptor for epoll instance
+  * @fd_tap_listen:	File descriptor for listening AF_UNIX socket, if any
++ * @prepatched:		Validated non-root inherited AF_UNIX stream contract
+  * @fd_tap:		AF_UNIX socket, tuntap device, or pre-opened socket
+  * @fd_control_listen:	Listening control/configuration socket, if any
+  * @fd_control:		Control/configuration socket, if any
+@@ -272,6 +273,7 @@ struct ctx {
+ 
+ 	int epollfd;
+ 	int fd_tap_listen;
++	bool prepatched;
+ 	int fd_tap;
+ 	int fd_control_listen;
+ 	int fd_control;
 diff --git a/tcp.c b/tcp.c
 index 95f4f3e..35a5337 100644
 --- a/tcp.c

@@ -1,5 +1,24 @@
 # Release Policy
 
+## um-arm64-v0.4.2 (2026-11-15)
+
+Runtime companion update. The Linux 7.3.1 kernel, matching `stub_exe` and `umnet`
+bytes from `um-arm64-v0.4.1` are reused unchanged; `passt-bionic` becomes
+passt-android `v0.4.1`, which tightens the inherited-socket contract (one
+validation after option parsing, explicit refusal of `--runas`, root/setid
+identities, non-`AF_UNIX`/non-`SOCK_STREAM`/unconnected descriptors and
+`MODE_PASTA`/`--splice-only`). This is not a new kernel baseline.
+
+The source release carries the Android patch rebased on the same official
+baseline (`7380393`), so a checkout plus `harness/passt-bionic.patch`
+reproduces the `passt-bionic` source exactly; the pinned CI build applies the
+patch forward and reverse and checks the NDK/ABI result. Kernel/ext4 evidence
+remains tied to the reused kernel bytes.
+
+The final kernel/stub/umnet/passt combination is checked on the untraced Termux
+host (IPv4 and full IPv6 network gates) before publication. No new long soak or
+real fault injection is claimed.
+
 ## um-arm64-v0.4.1 (2026-11-14)
 
 This runtime update keeps Linux 7.3.1 and the kernel/stub pair published in

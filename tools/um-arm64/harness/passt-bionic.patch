@@ -44,7 +44,7 @@ index 16b9dc8..afef78e 100644
  #define VERSION_BLOB							       \
  	VERSION "\n"							       \
 diff --git a/conf.c b/conf.c
-index 7be0c79..835b7b6 100644
+index 7be0c79..d06e5e3 100644
 --- a/conf.c
 +++ b/conf.c
 @@ -529,6 +529,13 @@ static unsigned int conf_ip6(struct ctx *c, unsigned int ifi)
@@ -69,7 +69,15 @@ index 7be0c79..835b7b6 100644
  	bool opt_a_is_prefix = false;
  	const char *logfile = NULL;
  	unsigned long optcode;
-@@ -1922,11 +1930,51 @@ void conf(struct ctx *c, int argc, char **argv)
+@@ -1906,6 +1914,7 @@ void conf(struct ctx *c, int argc, char **argv)
+ 	if (!ifi6 && *c->ip6.ifname_out)
+ 		ifi6 = if_nametoindex(c->ip6.ifname_out);
+ 
++	conf_prepatched(c, runas);
+ 	conf_ugid(runas, &uid, &gid);
+ 
+ 	if (logfile)
+@@ -1922,11 +1931,52 @@ void conf(struct ctx *c, int argc, char **argv)
  
  	log_conf_parsed = true;		/* Stop printing everything */
  
@@ -91,8 +99,9 @@ index 7be0c79..835b7b6 100644
 +	 * such a caller local-mode configuration while isolation still ran:
 +	 * half of the prepatched behaviour, and a failure that names neither
 +	 * the option nor the cause. */
-+	fd_local_mode = c->mode == MODE_PASST && fd_prepatched(c) &&
-+			!c->splice_only;
++	fd_local_mode = fd_prepatched(c);
++	if (fd_local_mode)
++		info("Prepatched mode: retaining caller credentials and filesystem; parent must provide isolation");
 +	if (!fd_local_mode)
 +		nl_sock_init(c, false);
 +	if (fd_local_mode) {
@@ -126,7 +135,7 @@ index 7be0c79..835b7b6 100644
  
  	if (c->ifi4 && c->mtu < IPV4_MIN_MTU) {
  		warn("MTU %"PRIu16" is too small for IPv4 (minimum %u)",
-@@ -1955,6 +2003,9 @@ void conf(struct ctx *c, int argc, char **argv)
+@@ -1955,6 +2005,9 @@ void conf(struct ctx *c, int argc, char **argv)
  	}
  
  	if (!c->ifi6 && !v4_only) {
@@ -136,16 +145,6 @@ index 7be0c79..835b7b6 100644
  		if (!c->splice_only) {
  			info("IPv6: no external interface as template, use local mode");
  			conf_ip6_local(c);
-@@ -2008,7 +2059,8 @@ void conf(struct ctx *c, int argc, char **argv)
- 
- 	conf_open_files(c);	/* Before any possible setuid() / setgid() */
- 
--	isolate_user(c, uid, gid, !netns_only, userns);
-+	if (!fd_prepatched(c))
-+		isolate_user(c, uid, gid, !netns_only, userns);
- 
- 	if (c->no_icmp)
- 		c->no_ndp = 1;
 diff --git a/ip.h b/ip.h
 index ac93c54..e392b71 100644
 --- a/ip.h
@@ -167,7 +166,7 @@ index ac93c54..e392b71 100644
  /**
   * ip6_set_flow_lbl() - Set flow label in an IPv6 header
 diff --git a/isolation.c b/isolation.c
-index 0cb6adb..2e4f464 100644
+index 0cb6adb..37b2b4c 100644
 --- a/isolation.c
 +++ b/isolation.c
 @@ -78,6 +78,7 @@
@@ -178,17 +177,14 @@ index 0cb6adb..2e4f464 100644
  #include <sys/syscall.h>
  #include <sys/types.h>
  #include <netinet/in.h>
-@@ -396,6 +397,18 @@ void isolate_user(const struct ctx *c, uid_t uid, gid_t gid, bool use_userns,
+@@ -396,6 +397,15 @@ void isolate_user(const struct ctx *c, uid_t uid, gid_t gid, bool use_userns,
  {
  	uint64_t ns_caps = 0;
  
-+	/* A prepatched AF_UNIX endpoint is only ever handed to us by a parent
-+	 * that already owns the isolation: there is no host interface to
-+	 * discover, no routing to set up, and no capability we could use.
-+	 * Android in particular denies both setgroups(2) and user namespace
-+	 * creation outright, so the whole user/namespace dance is both
-+	 * unnecessary and impossible there.
-+	 */
++	/* conf_prepatched() accepted an existing non-root, non-setid identity
++	 * and refused --runas.  Keep its UID/GID and supplementary groups: Android
++	 * forbids setgroups(), and app groups may grant required socket access.
++	 * This explicit delegation does not prove a parent sandbox exists. */
 +	if (fd_prepatched(c)) {
 +		debug("Prepatched socket endpoint: skipping user namespace setup");
 +		return;
@@ -197,16 +193,13 @@ index 0cb6adb..2e4f464 100644
  	/* First set our UID & GID in the original namespace */
  	if (setgroups(0, NULL)) {
  		/* If we don't have CAP_SETGID, this will EPERM */
-@@ -491,6 +504,17 @@ int isolate_prefork(const struct ctx *c)
+@@ -491,6 +501,14 @@ int isolate_prefork(const struct ctx *c)
  	int flags = CLONE_NEWIPC | CLONE_NEWNS | CLONE_NEWUTS;
  	uint64_t ns_caps = 0;
  
-+	/* An inherited socket endpoint means the caller owns the interface and
-+	 * our lifetime, and the host may not let us create namespaces at all
-+	 * (Android denies CLONE_NEWNS to app processes).  Our own mount and
-+	 * IPC namespaces buy nothing here: the descriptor is already open and
-+	 * we never touch the filesystem again after startup.
-+	 */
++	/* Only the validated, explicit non-root AF_UNIX stream contract delegates
++	 * namespaces/filesystem isolation.  Keep the capability clamp below and
++	 * all dump/no_new_privs/seccomp steps in isolate_postfork(). */
 +	if (fd_prepatched(c)) {
 +		debug("Prepatched socket endpoint: skipping namespace isolation");
 +		goto caps;
@@ -215,7 +208,7 @@ index 0cb6adb..2e4f464 100644
  	/* If we run in foreground, we have no chance to actually move to a new
  	 * PID namespace. For passt, use CLONE_NEWPID anyway, in case somebody
  	 * ever gets around seccomp profiles -- there's no harm in passing it.
-@@ -540,6 +564,7 @@ int isolate_prefork(const struct ctx *c)
+@@ -540,6 +558,7 @@ int isolate_prefork(const struct ctx *c)
  	/* Now that initialization is more-or-less complete, we can
  	 * drop further capabilities
  	 */
@@ -256,7 +249,7 @@ index 95f4f3e..35a5337 100644
  struct tcp_repair_opt {
  	__u32	opt_code;
 diff --git a/util.c b/util.c
-index ff1f19f..7a84f50 100644
+index ff1f19f..b5449be 100644
 --- a/util.c
 +++ b/util.c
 @@ -18,6 +18,7 @@
@@ -283,78 +276,71 @@ index ff1f19f..7a84f50 100644
  
  	if (read(fd, buf, sizeof(root_uid_map)) != sizeof(root_uid_map) - 1 ||
  	    strncmp(buf, root_uid_map, sizeof(root_uid_map)))
-@@ -1111,6 +1118,70 @@ long clamped_scale(long x, long y, long lo, long hi, long f)
+@@ -1111,6 +1118,63 @@ long clamped_scale(long x, long y, long lo, long hi, long f)
  	return x - (x * (y - lo) / (hi - lo)) * (100 - f) / 100;
  }
  
 +/**
-+ * fd_prepatched() - Is the interface descriptor an inherited socket?
-+ * @c:		Execution context
++ * conf_prepatched() - Validate and commit explicit inherited-interface mode
++ * @c:          Execution context, with all command-line mode options parsed
++ * @runas:      --runas argument, NULL if absent (even a no-op override is refused)
 + *
-+ * A parent that set up our interface for us (a VMM, an UML harness, a
-+ * sandboxed app) hands it over as one end of a socketpair.  Such a
-+ * descriptor has no filesystem path and needs no host interface, which is
-+ * the only configuration in which passt can run with no capability and no
-+ * namespace of its own.
++ * A connected fd is not evidence of a parent sandbox.  This contract only
++ * permits an existing non-root identity with its inherited supplementary groups.
++ * Validation happens once, before discovery or credentials change; every later
++ * configuration/isolation decision reads the same committed context flag.
++ */
++void conf_prepatched(struct ctx *c, const char *runas)
++{
++	const char *opt = getenv("PASST_ANDROID_NO_ISOLATION");
++	struct sockaddr_storage peer;
++	socklen_t len = sizeof(peer);
++	uid_t ruid, euid, suid;
++	gid_t rgid, egid, sgid;
++	int type;
++	struct stat st;
++
++	c->prepatched = false;
++	if (!opt || (strcmp(opt, "1") && strcmp(opt, "yes")))
++		return;
++
++	if (c->mode != MODE_PASST || c->splice_only)
++		die("Prepatched mode requires MODE_PASST without --splice-only");
++	if (runas)
++		die("Prepatched mode does not support --runas");
++	if (getresuid(&ruid, &euid, &suid) || getresgid(&rgid, &egid, &sgid))
++		die_perror("Prepatched mode cannot determine credentials");
++	if (!ruid || !euid || !suid || ruid != euid || ruid != suid ||
++	    !rgid || !egid || !sgid || rgid != egid || rgid != sgid)
++		die("Prepatched mode requires a non-root, non-setid UID and GID");
++	if (c->fd_tap < 0 || fstat(c->fd_tap, &st) || !S_ISSOCK(st.st_mode))
++		die("Prepatched mode requires --fd with a connected AF_UNIX SOCK_STREAM socket");
++	if (getpeername(c->fd_tap, (struct sockaddr *)&peer, &len) ||
++	    peer.ss_family != AF_UNIX)
++		die("Prepatched mode requires a connected AF_UNIX socket");
++	len = sizeof(type);
++	if (getsockopt(c->fd_tap, SOL_SOCKET, SO_TYPE, &type, &len) ||
++	    len != sizeof(type) || type != SOCK_STREAM)
++		die("Prepatched mode requires SOCK_STREAM framing");
++
++	c->prepatched = true;
++}
++
++/**
++ * fd_prepatched() - Read the validated inherited-interface contract
++ * @c:          Execution context
 + *
-+ * Return: true if the descriptor is an unnamed socket, false otherwise
++ * Return: the single decision committed by conf_prepatched(), false by default
 + */
 +bool fd_prepatched(const struct ctx *c)
 +{
-+	static int allowed = -1;
-+	struct stat st;
-+	struct sockaddr_storage peer;
-+	socklen_t peerlen = sizeof(peer);
-+
-+	if (c->fd_tap < 0)
-+		return false;
-+
-+	/*
-+	 * Skipping isolation is only safe for a socket endpoint handed over by a
-+	 * parent that already owns the sandbox.  It is also the only thing that
-+	 * works on Android, which denies the namespaces and setgroups calls the
-+	 * isolation steps make.
-+	 *
-+	 * It must not happen by accident in a normal build: `--fd` is an ordinary
-+	 * upstream option, and a root process given a socket there is expected to
-+	 * drop to nobody and pivot_root like any other passt.  The parent opts in
-+	 * explicitly, so a caller that does not ask keeps upstream behaviour.
-+	 */
-+	if (allowed < 0) {
-+		const char *opt = getenv("PASST_ANDROID_NO_ISOLATION");
-+
-+		allowed = opt && (!strcmp(opt, "1") || !strcmp(opt, "yes"));
-+	}
-+	if (!allowed)
-+		return false;
-+
-+	if (fstat(c->fd_tap, &st))
-+		return false;
-+
-+	if (!S_ISSOCK(st.st_mode))
-+		return false;
-+
-+	/*
-+	 * The descriptor must be a *connected* socket.  Without this a listening
-+	 * or unconnected fd looks prepatched, the isolation is skipped, and the
-+	 * failure only appears later in the event loop with a message that names
-+	 * neither the option nor the cause.
-+	 *
-+	 * getpeername() is the test, not SO_ERROR: SO_ERROR reads 0 for a
-+	 * connected, an unconnected, a listening and a datagram AF_UNIX socket
-+	 * alike, so it cannot tell them apart.  An unconnected or listening
-+	 * socket has no peer and getpeername() fails with ENOTCONN.
-+	 */
-+	if (getpeername(c->fd_tap, (struct sockaddr *)&peer, &peerlen))
-+		return false;
-+
-+	return true;
++	return c->prepatched;
 +}
 +
  /**
   * make_ugid_map() - Create userns UID & GID mappings
   * @pid:	PID of process owning the userns, or 0 for self
-@@ -1144,8 +1215,13 @@ void make_ugid_map(pid_t pid, uid_t uid, gid_t gid)
+@@ -1144,8 +1208,13 @@ void make_ugid_map(pid_t pid, uid_t uid, gid_t gid)
  	if (snprintf_check(gidmap, BUFSIZ, "0 %u 1", gid))
  		die_perror("Can't build gidmap");
  
@@ -373,13 +359,14 @@ index ff1f19f..7a84f50 100644
 +		warn("Couldn't configure user mappings (gid_map)");
  }
 diff --git a/util.h b/util.h
-index ec2d9ac..dfde65a 100644
+index ec2d9ac..93862fc 100644
 --- a/util.h
 +++ b/util.h
-@@ -291,5 +291,6 @@ static inline int wrap_getsockname(int sockfd, struct sockaddr *addr,
+@@ -291,5 +291,7 @@ static inline int wrap_getsockname(int sockfd, struct sockaddr *addr,
  void encode_domain_name(char *buf, const char *domain_name);
  
  void make_ugid_map(pid_t pid, uid_t uid, gid_t gid);
++void conf_prepatched(struct ctx *c, const char *runas);
 +bool fd_prepatched(const struct ctx *c);
  
  #endif /* UTIL_H */
